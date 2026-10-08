@@ -1,4 +1,4 @@
-# halloweentown
+# Halloween Town
 Halloween Town - Custom Seasonal Instance
 
 It's 11:59pm. The portal to Halloween Town closes at midnight. And a little ghost named Casper just found you 👻
