@@ -1,0 +1,5 @@
+// Everything on hw_town: NPCs, warps and monsters.
+// The block below is the map editor's; write your own script above or below it.
+
+//== BEGIN map-editor: hw_town -- generated, edits here are replaced ==
+//== END map-editor ==

@@ -1,0 +1,13 @@
+# halloween-town -- item overrides
+# Through rAthena's db/import, so only the fields named here change.
+# 12990 Pet_Egg_Scroll7 is renamed for the Halloween event; it still works
+# the same way (System/itemInfo-halloween-town.lua renames it in the client).
+
+Header:
+  Type: ITEM_DB
+  Version: 3
+
+Body:
+  - Id: 12990
+    AegisName: Pet_Egg_Scroll7
+    Name: Halloween Spooky Pack

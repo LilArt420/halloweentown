@@ -1,0 +1,917 @@
+// ====================================================================
+// Halloween Town: Casper's Halloween Night
+// By: Lil Art
+// - Casper (niflheim 185,190) flies the party to Halloween Town (hw_town)
+// - Three moons: Blue Moon (Lv 90+, the only one on Pre-renewal),
+//   Blood Moon (Lv 100+, Renewal) and Eclipse (Lv 200+, Renewal)
+// - Pumpkin barrier -> Horde 1 -> Blair (cemetery) -> MVP 1 -> Casper's house
+//   -> Horde 2 -> Casper -> MVP 2 -> Blair (old hill) -> Horde 3 -> Casper
+//   -> Blair transforms at the sky portal (final MVP) -> Blair's cleansed
+//   soul -> reward box -> Casper takes everyone home
+// - Solo or party. The run belongs to the party leader (or the solo player):
+//   only they talk to the NPCs inside, but every member's kills count, and
+//   every member on the map gets the Halloween Coins and the rewards.
+// - 90 minutes; 8 hour cooldown per character, starting on entry
+// - Every instance monster gives 1 Halloween Coin, every MVP 15
+// - The Halloween Exchanger (niflheim 180,191) trades coins for prizes
+//
+// Key spots on hw_town (400x400, Niflheim's fields):
+//   sky portal / arrival  261,158  (pumpkin ring around it)
+//   cemetery              202,240  (Blair, first meeting)
+//   Casper's house        239,232  (one of Niflheim's houses; Casper waits at 236,229)
+//   old hill              336,328  (Blair, second meeting)
+// ====================================================================
+
+// Map flags
+hw_town	mapflag	nomemo
+hw_town	mapflag	noteleport
+hw_town	mapflag	nosave	SavePoint
+hw_town	mapflag	nopenalty
+hw_town	mapflag	nobranch
+hw_town	mapflag	monster_noteleport
+
+// --- Helpers ----------------------------------------------------------------
+
+// Portrait pop-up: 1 = Casper (bottom-right, like Nightwing),
+// 2 = Blair (bottom-left, like Leticia), 3 = Jakk the Halloween Exchanger
+// (bottom-left), 0 = hide.
+// Files: data/texture/ui/illust/hw_casper.bmp, hw_blair.bmp, hw_jakk.bmp
+function	script	HW_Portrait	{
+	switch (getarg(0)) {
+	case 1:  cutin "hw_casper.bmp", 2; break;
+	case 2:  cutin "hw_blair.bmp", 0; break;
+	case 3:  cutin "hw_jakk.bmp", 0; break;
+	default: cutin "", 255;
+	}
+	return;
+}
+
+// A navigation link to a spot on hw_town: callfunc("HW_Navi", "<text>", x, y).
+// Clicking it opens the navigation; the coordinates are never shown.
+function	script	HW_Navi	{
+	return "<NAVI>" + getarg(0) + "<INFO>hw_town," + getarg(1) + "," + getarg(2) + ",0,000,0</INFO></NAVI>";
+}
+
+// The run's members who are on hw_town right now (the solo player, or every
+// party member). Fills $@HW_MA[] (account ids) / $@HW_MC[] (char ids) and
+// returns how many.
+function	script	HW_Members	{
+	deletearray $@HW_MA[0], 128;
+	deletearray $@HW_MC[0], 128;
+	.@n = 0;
+	if ($@HW_PID) {
+		getpartymember $@HW_PID, 1;
+		copyarray .@cid[0], $@partymembercid[0], $@partymembercount;
+		getpartymember $@HW_PID, 2;
+		copyarray .@aid[0], $@partymemberaid[0], $@partymembercount;
+		.@total = $@partymembercount;
+		for (.@i = 0; .@i < .@total; .@i++) {
+			if (!isloggedin(.@aid[.@i], .@cid[.@i])) continue;
+			if (strcharinfo(3, .@cid[.@i]) != "hw_town") continue;
+			$@HW_MA[.@n] = .@aid[.@i];
+			$@HW_MC[.@n] = .@cid[.@i];
+			.@n++;
+		}
+	} else if (isloggedin($@HW_AID, $@HW_CID) && strcharinfo(3, $@HW_CID) == "hw_town") {
+		$@HW_MA[0] = $@HW_AID;
+		$@HW_MC[0] = $@HW_CID;
+		.@n = 1;
+	}
+	return .@n;
+}
+
+// Gives <n> Halloween Coins to every member on hw_town, whoever made the kill
+function	script	HW_Coins	{
+	.@n = callfunc("HW_Members");
+	for (.@i = 0; .@i < .@n; .@i++)
+		getitem 6658, getarg(0), $@HW_MA[.@i];
+	return;
+}
+
+// Only the run's owner (party leader / solo player) drives the story.
+// Returns 1 for them; anyone else is told so (party members) or ignored.
+function	script	HW_IsOwner	{
+	if (getcharid(0) == $@HW_CID) return 1;
+	if ($@HW_PID && getcharid(1) == $@HW_PID) {
+		mes "[" + getarg(0) + "]";
+		mes "Only your party leader, ^0000FF" + $@HW_Name$ + "^000000, can speak for the party tonight.";
+		close2;
+	}
+	return 0;
+}
+
+// MVP id for <1 MVP 1 | 2 MVP 2 | 3 final> on the current moon
+function	script	HW_Boss	{
+	setarray .@b[0], 1039, 2483, 20520,	// MVP 1: Baphomet, Nightmare Baphomet, Chaos Baphomet
+	                 1492, 1832, 20928,	// MVP 2: Samurai Specter, Ifrit, The One
+	                 1418, 3029, 20943;	// Final: Evil Snake Lord, Reaper Yanku, Death Witch
+	return .@b[(getarg(0) - 1) * 3 + $@HW_Tier - 1];
+}
+
+// Spawns MVP <1|2> around the run's owner
+function	script	HW_BossNearOwner	{
+	.@id = callfunc("HW_Boss", getarg(0));
+	.@x = 261;
+	.@y = 158;
+	getmapxy(.@m$, .@px, .@py, BL_PC, $@HW_Name$);
+	if (.@m$ == "hw_town") { .@x = .@px; .@y = .@py; }
+	areamonster "hw_town", .@x - 3, .@y - 3, .@x + 3, .@y + 3, "--ja--", .@id, 1, "HW_Engine::OnMvp" + getarg(0) + "Kill";
+	mapannounce "hw_town", "[Blair]: " + (getarg(0) == 1 ? "Let's see you survive THIS!" : "My servant will drag you into the shadows!"), bc_map, "0xFF0000";
+	return;
+}
+
+// --- Entrance: Casper in Niflheim ---------------------------------------
+niflheim,185,190,4	script	Casper#HWgate	10029,{
+	setarray .@lv[1], 90, 100, 200;
+	setarray .@moon$[1], "Blue Moon", "Blood Moon", "Eclipse";
+
+	callfunc "HW_Portrait", 1;
+	mes "[Casper]";
+	mes "You... you can see me? Then there's still time. Please, listen. It's ^FF000011:59pm^000000, and in one minute the portal to Halloween Town closes from this side.";
+	next;
+
+	// A run is open: its owner comes back, its party members join
+	if ($@HW_Active && gettimetick(2) < $@HW_TimeLimit
+	&& (getcharid(0) == $@HW_CID || ($@HW_PID && getcharid(1) == $@HW_PID))) {
+		if (HW_Run != $@HW_RunID) {	// first time in this run
+			if (BaseLevel < .@lv[$@HW_Tier]) {
+				mes "[Casper]";
+				mes "Your party is under the " + .@moon$[$@HW_Tier] + ", but it would swallow you whole! You need ^FF0000Base Level " + .@lv[$@HW_Tier] + "^000000.";
+				callfunc "HW_Portrait", 0;
+				close;
+			}
+			if (HW_Cooldown > gettimetick(2)) {
+				.@cd = HW_Cooldown - gettimetick(2);
+				mes "[Casper]";
+				mes "You've already had your Halloween night. Come back in ^0000FF" + (.@cd / 3600) + "h " + ((.@cd % 3600) / 60) + "m^000000.";
+				callfunc "HW_Portrait", 0;
+				close;
+			}
+		}
+		.@rem = $@HW_TimeLimit - gettimetick(2);
+		mes "[Casper]";
+		mes "Your party is already in Halloween Town under the ^0000FF" + .@moon$[$@HW_Tier] + "^000000! The portal stays open for ^0000FF" + (.@rem / 60) + "m " + (.@rem % 60) + "s^000000 more.";
+		next;
+		if (select("Fly to Halloween Town:Not now") == 2) { callfunc "HW_Portrait", 0; close; }
+		callfunc "HW_Portrait", 0;
+		close2;
+		if (HW_Run != $@HW_RunID) {
+			HW_Run = $@HW_RunID;
+			HW_Cooldown = gettimetick(2) + 28800;
+		}
+		warp "hw_town", 261, 158;
+		end;
+	}
+
+	// 8 hour cooldown (character variable)
+	if (HW_Cooldown > gettimetick(2)) {
+		.@cd = HW_Cooldown - gettimetick(2);
+		mes "[Casper]";
+		mes "You've already had your Halloween night. The broom needs to rest before it can fly again.";
+		mes "Come back in ^0000FF" + (.@cd / 3600) + "h " + ((.@cd % 3600) / 60) + "m^000000.";
+		callfunc "HW_Portrait", 0;
+		close;
+	}
+
+	mes "[Casper]";
+	mes "There was a witch called Blair. The people of Halloween Town tied her to a stake and burned her alive.";
+	next;
+	mes "[Casper]";
+	mes "But her soul didn't leave. It stayed behind, white as ash and twisted with hate, roaming the town and hunting the ones who had set her skin on fire.";
+	next;
+	mes "[Casper]";
+	mes "The woods took her in. She made her home in them, deep in the shadows... and the deeper she went, the less it mattered who she killed. Revenge wasn't enough anymore.";
+	next;
+	mes "[Casper]";
+	mes "She destroyed the whole town. The ones she killed became monsters. The ones who survived ran all the way to Umbala and never came back.";
+	next;
+	mes "[Casper]";
+	mes "Me? I was the last soul she siphoned. She was tired by then, and her power was fading, so she couldn't corrupt me. I came out of it like this: a shadow... but still myself.";
+	next;
+	mes "[Casper]";
+	mes "Tonight is Halloween night. Tonight the shadows are strongest, and Blair wants them to swallow all of Midgard. Nobody has ever been strong enough to face her.";
+	next;
+	mes "[Casper]";
+	mes "Only a noble warrior of the light could stop her. And by luck, or by fate, I found you with one minute left before the portal closes.";
+	next;
+	mes "[Casper]";
+	mes "Here, take this broom. It's dusty, but it knows the way. Choose which moon to fly to... and the brighter the moon, the angrier the dead.";
+	next;
+
+	.@re = checkre(0);
+	.@menu$ = "Blue Moon (90+)";
+	if (.@re)
+		.@menu$ += ":Blood Moon (100-199):Eclipse (200+)";
+	.@menu$ += ":I'm too scared...";
+	.@tier = select(.@menu$);
+	if (.@tier > (.@re ? 3 : 1)) {
+		mes "[Casper]";
+		mes "Scared? Of ghosts? ...I'm trying not to take that personally.";
+		callfunc "HW_Portrait", 0;
+		close;
+	}
+
+	if (BaseLevel < .@lv[.@tier]) {
+		mes "[Casper]";
+		mes "The " + .@moon$[.@tier] + " would swallow you whole! You need to be at least ^FF0000Base Level " + .@lv[.@tier] + "^000000 to fly there.";
+		callfunc "HW_Portrait", 0;
+		close;
+	}
+
+	if (getcharid(1) && getpartyleader(getcharid(1), 2) != getcharid(0)) {
+		mes "[Casper]";
+		mes "Your party leader has to open the portal. Once they're through, come talk to me and I'll send you after them.";
+		callfunc "HW_Portrait", 0;
+		close;
+	}
+
+	if ($@HW_Active) {
+		mes "[Casper]";
+		mes "Someone else is already riding a broom through the portal. Only one group at a time, or the whole thing collapses. Try again in a little while!";
+		callfunc "HW_Portrait", 0;
+		close;
+	}
+
+	mes "[Casper]";
+	mes "The ^0000FF" + .@moon$[.@tier] + "^000000 it is. Hold on tight, and whatever you do... don't look down!";
+	if (getcharid(1))
+		mes "Your party can follow you: they just need to talk to me.";
+	callfunc "HW_Portrait", 0;
+	close2;
+
+	$@HW_Active = 1;
+	$@HW_CID = getcharid(0);	// the run's owner (character bound)
+	$@HW_AID = getcharid(3);
+	$@HW_Name$ = strcharinfo(0);
+	$@HW_PID = getcharid(1);	// 0 = solo
+	$@HW_Tier = .@tier;
+	$@HW_RunID = gettimetick(2);
+	$@HW_TimeLimit = gettimetick(2) + 5400;	// 90 minutes
+	HW_Run = $@HW_RunID;
+	HW_Cooldown = gettimetick(2) + 28800;	// 8 hours, starts on entry
+	donpcevent "HW_Engine::OnSetup";
+
+	warp "hw_town", 261, 158;
+	mapannounce "hw_town", "Halloween Town: " + .@moon$[.@tier] + " | Hero: " + strcharinfo(0) + " | Time Limit: 90 Minutes", bc_map, "0xFF8C00";
+	initnpctimer "HW_Engine";
+	end;
+}
+
+// --- Pumpkin barrier around the sky portal --------------------------------
+// Eight jack-o'-lantern heads stand on a closed ring of blocked cells
+// (3 cells from the arrival point). Talking to Casper opens it.
+hw_town,264,158,2	script	Pumpkin#HWB0	10174,{ end; }
+hw_town,264,161,3	script	Pumpkin#HWB1	10174,{ end; }
+hw_town,261,161,4	script	Pumpkin#HWB2	10174,{ end; }
+hw_town,258,161,5	script	Pumpkin#HWB3	10174,{ end; }
+hw_town,258,158,6	script	Pumpkin#HWB4	10174,{ end; }
+hw_town,258,155,7	script	Pumpkin#HWB5	10174,{ end; }
+hw_town,261,155,0	script	Pumpkin#HWB6	10174,{ end; }
+hw_town,264,155,1	script	Pumpkin#HWB7	10174,{ end; }
+
+// --- Casper inside Halloween Town -------------------------------------------
+hw_town,255,154,6	script	Casper#HW	10029,{
+	if (!callfunc("HW_IsOwner", "Casper")) end;
+	callfunc "HW_Portrait", 1;
+
+	// Arrival: the barrier, then Horde 1
+	if ($@HW_Stage == 0) {
+		mes "[Casper]";
+		mes "We made it! Hear that? The church bell. Midnight. The portal behind us is sealed until this is over.";
+		next;
+		mes "[Casper]";
+		mes "Welcome to Halloween Town... or what's left of it.";
+		next;
+		mes "[Casper]";
+		mes "It used to be the liveliest place in all the realms. Pumpkin lanterns on every porch, candy on every doorstep, children in costumes running through the square until sunrise.";
+		next;
+		mes "[Casper]";
+		mes "Now look at it. Ruins, graves and dead trees. Every monster out there was one of my neighbours once.";
+		next;
+		mes "[Casper]";
+		mes "Blair is down in the " + callfunc("HW_Navi", "cemetery", 202, 240) + ", pulling the lost souls out of their graves and binding them to the shadows.";
+		next;
+		mes "[Casper]";
+		mes "Cut them down before she raises enough of them to cross over into Midgard. The pumpkins are the only thing keeping them off this hill... I'll let them go. Ready? Here they come!";
+		callfunc "HW_Portrait", 0;
+		close2;
+
+		donpcevent "HW_Engine::OnRelease";
+		hideonnpc "Casper#HW";
+		$@HW_Stage = 1;
+		$@HW_Horde = 1;
+		donpcevent "HW_Engine::OnStartHorde";
+		end;
+	}
+
+	// MVP 1 down: Casper's house, then Horde 2
+	if ($@HW_Stage == 4) {
+		mes "[Casper]";
+		mes "You see this house? The dark one, with the shutters hanging off and the door that won't close anymore?";
+		next;
+		mes "[Casper]";
+		mes "I lived here. When Blair came, my mother stood in that doorway between her and me. She didn't even have a broom to fight with... just her two hands.";
+		next;
+		mes "[Casper]";
+		mes "She sacrificed herself to save me. It didn't work, in the end. But Blair was so worn out after taking her that she couldn't finish the job on me.";
+		next;
+		mes "[Casper]";
+		mes "We can't let Blair escape. If she gets through the portal, every son in Midgard loses his mother the way I lost mine.";
+		next;
+		mes "[Casper]";
+		mes "^FF8C00Every child deserves to go trick or treating!^000000 Every single one of them has the right to!";
+		next;
+		mes "[Casper]";
+		mes "...Sorry. Ghosts get emotional. She's sending more of them. Let's go!";
+		callfunc "HW_Portrait", 0;
+		close2;
+
+		hideonnpc "Casper#HW";
+		$@HW_Stage = 5;
+		$@HW_Horde = 2;
+		donpcevent "HW_Engine::OnStartHorde";
+		end;
+	}
+
+	// Horde 2 cleared: Blair has fled, MVP 2 guards the way
+	if ($@HW_Stage == 6) {
+		mes "[Casper]";
+		mes "Whew! I thought you'd be one of them by now.";
+		next;
+		mes "[Casper]";
+		mes "Blair ran off across the bridge, up to the " + callfunc("HW_Navi", "old hill", 336, 328) + ". She's hiding in the shadows behind her strongest servant.";
+		next;
+		mes "[Casper]";
+		mes "And... it already found us. I'm going to go be invisible somewhere. Good luck!";
+		callfunc "HW_Portrait", 0;
+		close2;
+
+		hideonnpc "Casper#HW";
+		$@HW_Stage = 7;
+		callfunc "HW_BossNearOwner", 2;
+		end;
+	}
+
+	// Horde 3 cleared: it ends where it began
+	if ($@HW_Stage == 10) {
+		mes "[Casper]";
+		mes "You did it! The woods are quiet... too quiet.";
+		next;
+		mes "[Casper]";
+		mes "This has to end where it began. Blair has gone back to the " + callfunc("HW_Navi", "sky portal", 261, 158) + ", right where we arrived. She's trying to slip through into Midgard!";
+		next;
+		mes "[Casper]";
+		mes "Hurry, before the portal opens for her!";
+		callfunc "HW_Portrait", 0;
+		close2;
+
+		hideonnpc "Casper#HW";
+		movenpc "Blair#HW", 261, 158;
+		hideoffnpc "Blair#HW";
+		$@HW_Stage = 11;
+		mapannounce "hw_town", "[Casper]: Blair is at the sky portal! Stop her!", bc_map, "0xFF8C00";
+		end;
+	}
+
+	mes "[Casper]";
+	mes "Keep going! I'll find you when it's safe. Probably.";
+	callfunc "HW_Portrait", 0;
+	close;
+}
+
+// --- Blair, the witch of Halloween Town -------------------------------------
+hw_town,202,240,4	script	Blair#HW	3887,{
+	if (!callfunc("HW_IsOwner", "Blair")) end;
+	callfunc "HW_Portrait", 2;
+
+	// Horde 1 cleared: MVP 1
+	if ($@HW_Stage == 2) {
+		mes "[Blair]";
+		mes "Hehehe... so you're the little light Casper dragged through the portal at the last minute.";
+		next;
+		mes "[Blair]";
+		mes "Look at you. A mere mortal. The tiniest grain of stardust, drifting through eternity.";
+		next;
+		mes "[Blair]";
+		mes "They burned me, you know. Tied me up and watched my skin crackle. Every soul you cut down tonight was one of them... and you think that means anything?";
+		next;
+		mes "[Blair]";
+		mes "Cut down a thousand and you've changed nothing in the grand scheme of all things. The shadows don't run out.";
+		next;
+		mes "[Blair]";
+		mes "^FF0000You will never reach me again. The next horde will send you to the void!^000000";
+		callfunc "HW_Portrait", 0;
+		close2;
+
+		hideonnpc "Blair#HW";
+		$@HW_Stage = 3;
+		callfunc "HW_BossNearOwner", 1;
+		end;
+	}
+
+	// MVP 2 down: Horde 3
+	if ($@HW_Stage == 8) {
+		select("I will stop your madness, Blair!");
+		mes "[Blair]";
+		mes "^8B008BMwahahaha... HAHAHAHAHA!^000000";
+		next;
+		mes "[Blair]";
+		mes "Stop me? These woods took me in when the fire was still on my skin. Every root, every branch, every thing that crawls in their shadows answers to me.";
+		next;
+		mes "[Blair]";
+		mes "And their only wish tonight is the same as mine: ^FF0000to never be bothered by you again.^000000";
+		callfunc "HW_Portrait", 0;
+		close2;
+
+		hideonnpc "Blair#HW";
+		$@HW_Stage = 9;
+		$@HW_Horde = 3;
+		donpcevent "HW_Engine::OnStartHorde";
+		end;
+	}
+
+	// Horde 3 cleared: the transformation
+	if ($@HW_Stage == 11) {
+		mes "[Blair]";
+		mes "YOU AGAIN?! One more step and I'd have been through the portal!";
+		next;
+		mes "[Blair]";
+		mes "^FF0000An ant! An insignificant ANT will not ruin my plans!^000000";
+		next;
+		mes "[Blair]";
+		mes "There's nothing you can do to stop it. The shadows will swallow Midgard, and it will be my Halloween realm, forever and ever!";
+		next;
+		mes "^8B008BBlair's pale skin splits like old, burned parchment. Something enormous claws its way out of her.^000000";
+		callfunc "HW_Portrait", 0;
+		close2;
+
+		specialeffect EF_DEVIL1, AREA, "Blair#HW";
+		hideonnpc "Blair#HW";
+		$@HW_Stage = 12;
+		.@id = callfunc("HW_Boss", 3);
+		monster "hw_town", 261, 158, "--ja--", .@id, 1, "HW_Engine::OnFinalKill";
+		mapannounce "hw_town", "[Blair]: Behold my true form!", bc_map, "0xFF0000";
+		end;
+	}
+
+	// Final MVP down: her cleansed soul
+	if ($@HW_Stage == 13) {
+		mes "[Blair]";
+		mes "...It's quiet. For the first time since the fire, it's so quiet.";
+		next;
+		mes "[Blair]";
+		mes "The shadows are gone. I can feel my own soul again... white, and clean, the way it was before they lit the pyre.";
+		next;
+		mes "[Blair]";
+		mes "Thank you, warrior of the light. You cleansed every bit of evil out of me.";
+		next;
+		mes "[Blair]";
+		mes "Now, at last... I may rest in peace.";
+		callfunc "HW_Portrait", 0;
+		close2;
+
+		specialeffect EF_ANGEL, AREA, "Blair#HW";
+		hideonnpc "Blair#HW";
+		getmapxy(.@m$, .@x, .@y, BL_PC);
+		movenpc "Halloween Box#HW", .@x + 1, .@y;
+		hideoffnpc "Halloween Box#HW";
+		movenpc "Casper#HW", .@x - 1, .@y;
+		hideoffnpc "Casper#HW";
+		$@HW_Stage = 14;
+		mapannounce "hw_town", "[Casper]: She's at peace... and she left her hoard behind. Open it!", bc_map, "0xFF8C00";
+		end;
+	}
+
+	mes "[Blair]";
+	mes "Hehehe... my souls will rip you to pieces long before you get to me.";
+	callfunc "HW_Portrait", 0;
+	close;
+}
+
+// --- Reward box -------------------------------------------------------------
+// The owner opens it: everyone in the run on hw_town gets the rewards, then
+// Casper says goodbye and flies everyone back to Niflheim, between him and
+// the Halloween Exchanger.
+hw_town,1,1,4	script	Halloween Box#HW	10421,{
+	if (!callfunc("HW_IsOwner", "Blair's Hoard")) end;
+	if ($@HW_Stage != 14) end;
+	$@HW_Stage = 15;	// prevents a double claim
+
+	mes "[Blair's Hoard]";
+	mes "Candy wrappers, cursed coins, and the dusty treasures of a hundred Halloweens. Enough for everyone who flew in tonight.";
+	next;
+	// the owner's share here (they are attached); the rest of the party's in
+	// HW_Engine::OnRewardParty, which waits a moment and skips the owner
+	callfunc "HW_GiveRewards";
+	donpcevent "HW_Engine::OnRewardParty";
+	mes "[Blair's Hoard]";
+	mes "You received your rewards!";
+	next;
+
+	callfunc "HW_Portrait", 1;
+	mes "[Casper]";
+	mes "It's over. It's really over. You stopped Blair's madness once and for all.";
+	next;
+	mes "[Casper]";
+	mes "The children of Midgard will knock on doors tonight and never know how close the shadows came. That's the best kind of ending, isn't it?";
+	next;
+	mes "[Casper]";
+	mes "Thank you, hero. Whenever evil rises again, call for me. I'll fight it at your side.";
+	next;
+	mes "[Casper]";
+	mes "Now hold on to that broom. Let's go home.";
+	callfunc "HW_Portrait", 0;
+	close2;
+	donpcevent "HW_Engine::OnFinish";
+	end;
+
+OnInit:
+	hideonnpc;
+	end;
+}
+
+// Blair's hoard for the attached character, on the current moon
+function	script	HW_GiveRewards	{
+	setarray .@coin[1], 100, 200, 300;
+	setarray .@egg[1], 5, 10, 15;
+	setarray .@box[1], 1, 3, 5;
+	setarray .@zeny[1], 1500000, 3000000, 5000000;
+	setarray .@bexp[1], 50000000, 2000000000, 30000000000;
+	setarray .@jexp[1], 30000000, 1200000000, 18000000000;
+	.@t = $@HW_Tier;
+	// items missing on this server (e.g. on Pre-renewal) are skipped
+	if (getitemname(6658) != "null") getitem 6658, .@coin[.@t];
+	if (getitemname(12990) != "null") getitem 12990, .@egg[.@t];
+	if (getitemname(22669) != "null") getitem 22669, .@box[.@t];
+	Zeny += .@zeny[.@t];
+	getexp .@bexp[.@t], .@jexp[.@t];
+	return;
+}
+
+// --- Casper's voice: step-by-step navigation pop-ups for the owner ---------
+// Kill scripts only set $@HW_Guide; the 1-second HUD loop (its own script,
+// never nested in another one) attaches to the owner and starts the pop-up
+// with addtimer, so it runs once the owner is free. Attaching to the owner
+// from inside a kill script makes rAthena lose that script and crash.
+-	script	HW_Guide	-1,{
+// Horde 1 cleared
+OnBlair1:
+	if (strcharinfo(3) != "hw_town") end;
+	callfunc "HW_Portrait", 1;
+	mes "[Casper]";
+	mes "The souls are scattering! Blair is still in the " + callfunc("HW_Navi", "cemetery", 202, 240) + ". Go get her!";
+	callfunc "HW_Portrait", 0;
+	close;
+
+// MVP 1 down
+OnHouse:
+	if (strcharinfo(3) != "hw_town") end;
+	callfunc "HW_Portrait", 1;
+	mes "[Casper]";
+	mes "You beat it! Come find me by the " + callfunc("HW_Navi", "old house", 236, 229) + " past the cemetery. There's something I need to tell you.";
+	callfunc "HW_Portrait", 0;
+	close;
+
+// MVP 2 down
+OnBlair2:
+	if (strcharinfo(3) != "hw_town") end;
+	callfunc "HW_Portrait", 1;
+	mes "[Casper]";
+	mes "Her servant is down, the way is open! Blair is waiting on the " + callfunc("HW_Navi", "old hill", 336, 328) + ".";
+	mes "Careful, the dead are wandering all over town...";
+	callfunc "HW_Portrait", 0;
+	close;
+
+// Final MVP down
+OnSoul:
+	if (strcharinfo(3) != "hw_town") end;
+	callfunc "HW_Portrait", 1;
+	mes "[Casper]";
+	mes "Look, at the " + callfunc("HW_Navi", "sky portal", 261, 158) + "... that's Blair. The real Blair. Go to her.";
+	callfunc "HW_Portrait", 0;
+	close;
+}
+
+// --- Engine: hordes, kill counts, coins, HUD, time limit, cleanup ----------
+-	script	HW_Engine	-1,{
+
+// Fresh run: barrier up, NPCs back in place
+OnSetup:
+	killmonster "hw_town", "All";
+	stopnpctimer;
+	$@HW_Stage = 0;
+	$@HW_Horde = 0;
+	$@HW_Guide = 0;
+	deletearray $@HW_K[0], 3;
+	movenpc "Casper#HW", 255, 154;
+	hideoffnpc "Casper#HW";
+	movenpc "Blair#HW", 202, 240;
+	hideoffnpc "Blair#HW";
+	hideonnpc "Halloween Box#HW";
+	for (.@i = 0; .@i < 8; .@i++)
+		hideoffnpc "Pumpkin#HWB" + .@i;
+	callsub L_Barrier, false;
+	end;
+
+// Casper lets the pumpkins go
+OnRelease:
+	for (.@i = 0; .@i < 8; .@i++)
+		hideonnpc "Pumpkin#HWB" + .@i;
+	callsub L_Barrier, true;
+	end;
+
+// Spawns horde $@HW_Horde for the current moon: all of it at once, all over
+// the map (no refills)
+OnStartHorde:
+	callsub L_Cfg, $@HW_Horde;
+	deletearray $@HW_K[0], 3;
+	$@HW_Goal = .goal;
+	for (.@i = 0; .@i < 3; .@i++)
+		areamonster "hw_town", 90, 46, 344, 358, "--ja--", .id[.@i], .spawn, "HW_Engine::OnHKill" + .@i;
+	mapannounce "hw_town", "[Casper]: Horde " + $@HW_Horde + "! Slay " + .goal + " each of " + getmonsterinfo(.id[0], MOB_NAME) + ", " + getmonsterinfo(.id[1], MOB_NAME) + " and " + getmonsterinfo(.id[2], MOB_NAME) + "!", bc_map, "0xFF8C00";
+	end;
+
+OnHKill0:
+	callsub L_Kill, 0;
+	end;
+OnHKill1:
+	callsub L_Kill, 1;
+	end;
+OnHKill2:
+	callsub L_Kill, 2;
+	end;
+
+// Any member's kill counts; every member on the map gets the coin
+L_Kill:
+	if (!$@HW_Active || ($@HW_Stage != 1 && $@HW_Stage != 5 && $@HW_Stage != 9)) return;
+	.@t = getarg(0);
+	callfunc "HW_Coins", 1;
+	if ($@HW_K[.@t] < $@HW_Goal) $@HW_K[.@t]++;
+	callsub L_Cfg, $@HW_Horde;
+	if (playerattached())
+		dispbottom "[Halloween Town] " + getmonsterinfo(.id[0], MOB_NAME) + ": " + $@HW_K[0] + "/" + $@HW_Goal + " | " + getmonsterinfo(.id[1], MOB_NAME) + ": " + $@HW_K[1] + "/" + $@HW_Goal + " | " + getmonsterinfo(.id[2], MOB_NAME) + ": " + $@HW_K[2] + "/" + $@HW_Goal;
+	if ($@HW_K[0] < $@HW_Goal || $@HW_K[1] < $@HW_Goal || $@HW_K[2] < $@HW_Goal) return;
+
+	killmonster "hw_town", "All";
+	if ($@HW_Stage == 1) {
+		$@HW_Stage = 2;
+		mapannounce "hw_town", "[Casper]: The souls are scattering! Blair is still in the cemetery!", bc_map, "0xFF8C00";
+		$@HW_Guide = 1;	// the HUD loop hands it to the owner (see OnTimer1000)
+	} else {
+		$@HW_Stage = ($@HW_Stage == 5) ? 6 : 10;
+		callsub L_CasperToOwner;
+		mapannounce "hw_town", "[Casper]: Psst! Over here! Talk to me!", bc_map, "0xFF8C00";
+	}
+	return;
+
+// The dead wandering town on the way to the old hill (after MVP 2): coins
+// only, no count
+OnFillerKill:
+	if (!$@HW_Active) end;
+	callfunc "HW_Coins", 1;
+	end;
+
+// MVP 1 down: the hero swears to stop her; Casper waits at his house
+OnMvp1Kill:
+	if (!$@HW_Active || $@HW_Stage != 3) end;
+	callfunc "HW_Coins", 15;
+	if (isloggedin($@HW_AID, $@HW_CID))
+		unittalk $@HW_AID, $@HW_Name$ + " : I need to stop her, no matter what!";
+	$@HW_Stage = 4;
+	movenpc "Casper#HW", 236, 229;
+	hideoffnpc "Casper#HW";
+	mapannounce "hw_town", "[Casper]: Over here, by the old house past the cemetery!", bc_map, "0xFF8C00";
+	$@HW_Guide = 2;
+	end;
+
+// MVP 2 down: Blair can be reached on the old hill, and the dead of Hordes
+// 1 and 2 wander the town on the way
+OnMvp2Kill:
+	if (!$@HW_Active || $@HW_Stage != 7) end;
+	callfunc "HW_Coins", 15;
+	$@HW_Stage = 8;
+	movenpc "Blair#HW", 336, 328;
+	hideoffnpc "Blair#HW";
+	// a fifth of each horde's total, scattered in five patches along the way
+	// from the owner to the old hill (Blue 210, Red 300, Eclipse 450 in all)
+	.@sx = 261;
+	.@sy = 158;
+	getmapxy(.@m$, .@px, .@py, BL_PC, $@HW_Name$);
+	if (.@m$ == "hw_town") { .@sx = .@px; .@sy = .@py; }
+	for (.@h = 1; .@h <= 2; .@h++) {
+		callsub L_Cfg, .@h;
+		for (.@i = 0; .@i < 3; .@i++) {
+			.@each = .spawn / 25;	// a fifth of the total, over five patches
+			if (.@each < 1) .@each = 1;
+			for (.@k = 1; .@k <= 5; .@k++) {
+				.@cx = .@sx + (336 - .@sx) * .@k / 6;
+				.@cy = .@sy + (328 - .@sy) * .@k / 6;
+				areamonster "hw_town", .@cx - 20, .@cy - 20, .@cx + 20, .@cy + 20, "--ja--", .id[.@i], .@each, "HW_Engine::OnFillerKill";
+			}
+		}
+	}
+	mapannounce "hw_town", "[Casper]: The way is open! Blair is on the old hill, and the dead are wandering all over town!", bc_map, "0xFF8C00";
+	$@HW_Guide = 3;
+	end;
+
+// Final MVP down: Blair's cleansed soul at the portal
+OnFinalKill:
+	if (!$@HW_Active || $@HW_Stage != 12) end;
+	callfunc "HW_Coins", 15;
+	killmonster "hw_town", "All";
+	$@HW_Stage = 13;
+	movenpc "Blair#HW", 261, 158;
+	hideoffnpc "Blair#HW";
+	mapannounce "hw_town", "[Casper]: She's... she's not a monster anymore. Look at the portal!", bc_map, "0xFF8C00";
+	$@HW_Guide = 4;
+	end;
+
+// The rest of the party's share of Blair's hoard (the owner got theirs in
+// the box's own script)
+OnRewardParty:
+	sleep 1000;	// let the box's script run on before attaching to anyone
+	.@n = callfunc("HW_Members");
+	copyarray .@aid[0], $@HW_MA[0], .@n;
+	for (.@i = 0; .@i < .@n; .@i++) {
+		if (.@aid[.@i] == $@HW_AID) continue;
+		if (!attachrid(.@aid[.@i])) continue;
+		callfunc "HW_GiveRewards";
+		dispbottom "[Halloween Town] You received Blair's hoard. Happy Halloween!";
+		detachrid;
+	}
+	end;
+
+// Casper flies everyone home: between him and the Halloween Exchanger
+OnFinish:
+	sleep 1500;
+	mapwarp "hw_town", "niflheim", 182, 190;
+	donpcevent "HW_Engine::OnCleanup";
+	end;
+
+// Casper pops up beside the run's owner
+L_CasperToOwner:
+	.@x = 261;
+	.@y = 158;
+	getmapxy(.@m$, .@px, .@py, BL_PC, $@HW_Name$);
+	if (.@m$ == "hw_town") { .@x = .@px + 1; .@y = .@py; }
+	movenpc "Casper#HW", .@x, .@y;
+	hideoffnpc "Casper#HW";
+	return;
+
+// Blocks (false) or opens (true) the ring of cells under the pumpkins:
+// every cell exactly 3 cells (square distance) from the portal, 261,158
+L_Barrier:
+	for (.@dx = -3; .@dx <= 3; .@dx++)
+		for (.@dy = -3; .@dy <= 3; .@dy++)
+			if (.@dx == -3 || .@dx == 3 || .@dy == -3 || .@dy == 3)
+				setcell "hw_town", 261 + .@dx, 158 + .@dy, 261 + .@dx, 158 + .@dy, cell_walkable, getarg(0);
+	return;
+
+// 1-second loop: HUD for every member, Casper's pop-ups, time limit
+OnTimer1000:
+	if (!$@HW_Active) {
+		stopnpctimer;
+		end;
+	}
+	.@rem = $@HW_TimeLimit - gettimetick(2);
+	if (.@rem <= 0) {
+		stopnpctimer;
+		mapannounce "hw_town", "[Casper]: Midnight is over! The portal is closing, hold on to your broom!", bc_map, "0xFF0000";
+		sleep 2000;
+		mapwarp "hw_town", "niflheim", 182, 190;
+		donpcevent "HW_Engine::OnCleanup";
+		end;
+	}
+	.@time$ = (.@rem / 60) + ":" + ((.@rem % 60) < 10 ? "0" : "") + (.@rem % 60);
+	switch ($@HW_Stage) {
+	case 0:  .@info$ = "Talk to Casper"; break;
+	case 1:
+	case 5:
+	case 9:  .@info$ = "Horde " + $@HW_Horde + " | " + $@HW_K[0] + "/" + $@HW_Goal + " " + $@HW_K[1] + "/" + $@HW_Goal + " " + $@HW_K[2] + "/" + $@HW_Goal; break;
+	case 2:  .@info$ = "Find Blair in the cemetery"; break;
+	case 3:
+	case 7:
+	case 12: .@info$ = "Defeat the MVP"; break;
+	case 4:  .@info$ = "Find Casper by the ruined house"; break;
+	case 6:
+	case 10: .@info$ = "Talk to Casper"; break;
+	case 8:  .@info$ = "Find Blair on the old hill"; break;
+	case 11: .@info$ = "Stop Blair at the sky portal"; break;
+	case 13: .@info$ = "Talk to Blair at the sky portal"; break;
+	default: .@info$ = "Open Blair's hoard";
+	}
+	.@n = callfunc("HW_Members");
+	copyarray .@aid[0], $@HW_MA[0], .@n;
+	setarray .@guide$[1], "OnBlair1", "OnHouse", "OnBlair2", "OnSoul";
+	for (.@i = 0; .@i < .@n; .@i++) {
+		if (!attachrid(.@aid[.@i])) continue;
+		showscript "[Halloween Town] " + .@time$ + " | " + .@info$;
+		if ($@HW_Guide && getcharid(0) == $@HW_CID) {
+			addtimer 100, "HW_Guide::" + .@guide$[$@HW_Guide];
+			$@HW_Guide = 0;
+		}
+		if (.@rem == 1800 || .@rem == 600 || .@rem == 300 || .@rem == 60)
+			dispbottom "[Halloween Town] " + (.@rem / 60) + " minute(s) left before the portal closes!";
+		detachrid;
+	}
+	setnpctimer 0;
+	end;
+
+OnCleanup:
+	stopnpctimer;
+	killmonster "hw_town", "All";
+	hideonnpc "Halloween Box#HW";
+	movenpc "Casper#HW", 255, 154;
+	hideoffnpc "Casper#HW";
+	movenpc "Blair#HW", 202, 240;
+	hideoffnpc "Blair#HW";
+	for (.@i = 0; .@i < 8; .@i++)
+		hideoffnpc "Pumpkin#HWB" + .@i;
+	callsub L_Barrier, false;
+	$@HW_Active = 0;
+	$@HW_CID = 0;
+	$@HW_AID = 0;
+	$@HW_Name$ = "";
+	$@HW_PID = 0;
+	$@HW_Tier = 0;
+	$@HW_Stage = 0;
+	$@HW_Horde = 0;
+	$@HW_Goal = 0;
+	$@HW_Guide = 0;
+	$@HW_RunID = 0;
+	$@HW_TimeLimit = 0;
+	deletearray $@HW_K[0], 3;
+	end;
+
+// .id[0..2], .goal and .spawn for horde <1|2|3> on moon $@HW_Tier.
+// Loaded on every use, so nothing depends on OnInit having run.
+L_Cfg:
+	switch (($@HW_Tier - 1) * 3 + getarg(0)) {
+	// Blue Moon
+	case 1: setarray .id[0], 1163, 1297, 1208;   .goal = 100; .spawn = 150; break;	// Raydric, Ancient Mummy, Wanderer
+	case 2: setarray .id[0], 1268, 1219, 1302;   .goal = 150; .spawn = 200; break;	// Bloody Knight, Abysmal Knight, Dark Illusion
+	case 3: setarray .id[0], 1283, 1120, 1720;   .goal = 200; .spawn = 250; break;	// Chimera, Ghostring, Hydrolancer
+	// Blood Moon
+	case 4: setarray .id[0], 3200, 2993, 2959;   .goal = 150; .spawn = 200; break;	// Wicked Chimera, Malicious Baby Ghost, Torturous Redeemer
+	case 5: setarray .id[0], 20360, 2736, 3480;  .goal = 250; .spawn = 300; break;	// Mutant Plaga, Necromancer Ringleader, Immortal Cursed Zombie
+	case 6: setarray .id[0], 3193, 2474, 20367;  .goal = 400; .spawn = 450; break;	// Ancient Medium Gigantes, 2nd Commander of Destruction, Contaminated Raydric
+	// Eclipse
+	case 7: setarray .id[0], 20420, 3474, 3041;  .goal = 250; .spawn = 300; break;	// Corrupted Wanderer, Immortal Cursed Knight, Freezing Morocc Reincarnation
+	case 8: setarray .id[0], 3448, 3039, 20616;  .goal = 400; .spawn = 450; break;	// Renovated Amdarais, Blazing Morocc Reincarnation, Bone Ferus
+	case 9: setarray .id[0], 20920, 3091, 22209; .goal = 666; .spawn = 700; break;	// Lavaeter, Brinaranea, Polluted Earth Spirit
+	}
+	return;
+
+OnInit:
+	callsub L_Barrier, false;
+	end;
+}
+
+// --- Halloween Exchanger (Jakk) ---------------------------------------------
+// Opens a shop window (item icons, prices in Halloween Coins). The list is
+// built when the server starts, from the items this server actually has:
+// a prize missing here (e.g. on Pre-renewal) is swapped for a Halloween
+// stand-in, or left out if that is missing too.
+-	itemshop	HW_CoinShop	-1,6658,12990:50
+
+niflheim,180,191,4	script	Halloween Exchanger	1130,{
+	callfunc "HW_Portrait", 3;
+	mes "[Halloween Exchanger]";
+	mes "Trick or treat! Got any ^FF8C00Halloween Coins^000000? Blair's ghosts drop them all over Halloween Town.";
+	mes "My prices are in coins, not zeny. You have ^0000FF" + countitem(6658) + "^000000 coins.";
+	next;
+	if (select("Show me your treats:Never mind") == 2) { callfunc "HW_Portrait", 0; close; }
+	callfunc "HW_Portrait", 0;
+	close2;
+	callshop "HW_CoinShop", 1;
+	end;
+
+OnInit:
+	//                 prize    stand-in  coins
+	setarray .@prize[0], 12990,     0,    50,	// Halloween Spooky Pack (Pet_Egg_Scroll7)
+	                     22669,     0,   100,	// HALLOWEEN_G_BOX
+	                     19910,     0,  1500,	// C_Halloween_Hat
+	                    420597, 20172,  1500,	// C_Halloween_Pumpkin -> Costume Pumpkin Hat
+	                     19903,     0,  1500,	// C_Witchs_Hat
+	                     20588, 20395,  1500,	// C_Nifl_Bloom -> Costume Black Witch Hat
+	                     31833, 20098,  1500,	// C_Halloween_Cat_Short -> Costume Vampire Hairband
+	                     20543, 20034,  1500,	// C_Halloween_Poring_Bag -> Costume Jack Castle Bat
+	                    400431, 20225,  1500,	// C_Sakura_Witch_Hat -> Costume Pumpkin Head
+	                     20397, 19917,  1500,	// C_Jakk -> Costume Dark Pumpkin Hat
+	                     23719,   616, 150000;	// Sealed_Card2 -> Old Card Album
+	.@n = 0;
+	for (.@i = 0; .@i < getarraysize(.@prize); .@i += 3) {
+		.@id = .@prize[.@i];
+		if (getitemname(.@id) == "null") .@id = .@prize[.@i + 1];
+		if (!.@id || getitemname(.@id) == "null") continue;
+		if (inarray(.@list[0], .@id) != -1) continue;	// stand-in already listed
+		.@list[.@n] = .@id;
+		.@cost[.@n] = .@prize[.@i + 2];
+		.@n++;
+	}
+	if (!.@n) end;
+	npcshopitem "HW_CoinShop", .@list[0], .@cost[0];
+	for (.@i = 1; .@i < .@n; .@i++)
+		npcshopadditem "HW_CoinShop", .@list[.@i], .@cost[.@i];
+	end;
+}

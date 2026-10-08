@@ -1,0 +1,23 @@
+# halloween-town -- Blair's look
+# The client has the E_MD_DEPRESS_SOUL sprite (3887), but this server's monster
+# database doesn't, and an NPC can only use a sprite id the server knows. This
+# entry exists so the Blair NPC (npc/halloween_instance.txt) can wear it; the
+# script never spawns it as a monster.
+
+Header:
+  Type: MOB_DB
+  Version: 5
+
+Body:
+  - Id: 3887
+    AegisName: E_MD_DEPRESS_SOUL
+    Name: Blair
+    Level: 1
+    Hp: 1
+    Size: Medium
+    Race: Demon
+    Element: Dark
+    ElementLevel: 1
+    WalkSpeed: 200
+    Ai: 06
+    Class: Normal
