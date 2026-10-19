@@ -6,8 +6,8 @@
 #
 # The same file is in every LilArt420 mod repository (.github/scripts/), run by
 # .github/workflows/validate.yml. It follows Flux159/rathena's
-# npc_db_validation.yml: configure with --enable-buildbot=yes, which makes
-# `map-server --run-once` exit non-zero after any warning or error.
+# npc_db_validation.yml: configure with --enable-buildbot=yes and load every
+# table and script with `map-server --run-once`.
 #
 # The server is the app's: Flux159/rathena at the app's config/VENDOR_PINS
 # commit, with scripts/apply-server-mods.sh applied and its default packet
@@ -18,6 +18,12 @@
 # lines map_conf.txt gets. Twice when the mod has yes/no settings: once with
 # their defaults, and once with every one of them on, so every when/<key>/
 # folder is loaded at least once.
+#
+# That server already warns a little on its own (population engine commands
+# with no atcommands.yml entry, a hidden Companion Recruiter), so buildbot's
+# exit status fails with or without a mod. So the server is first run without
+# the mod, and a run with it fails on every [Warning] or [Error] line the
+# baseline did not have, or if it does not get as far as the baseline did.
 #
 # Not covered: conf/groups.yml and atcommands (merged into the app's own
 # copies, which this checkout does not have), lua/ hooks (the population
@@ -51,20 +57,39 @@ cp conf/import/map_conf.txt "$WORK/map_conf-clean.txt"
 
 say "Database"
 sudo systemctl start mysql.service
-mysql -uroot -proot -e "CREATE DATABASE ragnarok;"
-mysql -uroot -proot ragnarok < sql-files/main.sql
-mysql -uroot -proot ragnarok < sql-files/logs.sql
-mysql -uroot -proot -e "CREATE USER 'ragnarok'@'localhost' IDENTIFIED WITH mysql_native_password BY 'ragnarok';"
-mysql -uroot -proot -e "GRANT SELECT,INSERT,UPDATE,DELETE ON ragnarok.* TO 'ragnarok'@'localhost';"
+# The runner's MySQL root login, as in Flux159/rathena's tools/ci/sql.sh.
+printf '[client]\nuser=root\npassword=root\n' > ~/.my.cnf
+mysql -e "CREATE DATABASE ragnarok;"
+for f in main logs roulette_default_data; do mysql ragnarok < "sql-files/$f.sql"; done
+mysql -e "CREATE USER 'ragnarok'@'localhost' IDENTIFIED WITH mysql_native_password BY 'ragnarok';"
+mysql -e "GRANT SELECT,INSERT,UPDATE,DELETE ON ragnarok.* TO 'ragnarok'@'localhost';"
 
 say "The app's mod code (stack/), with the CI test appended"
 cat "$HERE/app_mods_ci.rs" >> "$APP/stack/src/mods.rs"
 APP_VERSION=$(jq -r .version "$APP/package.json")
 (cd "$APP/stack" && cargo test --no-run -q)
 
+# Runs map-server once; leaves the log in $WORK/<label>.plain, the [Warning]
+# and [Error] lines in $WORK/<label>.problems, and the exit status in
+# $MS_STATUS.
+map_server() {
+    local label=$1
+    MS_STATUS=0
+    ./map-server --run-once > "$WORK/$label.log" 2>&1 || MS_STATUS=$?
+    sed 's/\x1b\[[0-9;]*[A-Za-z]//g; s/\r//g' "$WORK/$label.log" > "$WORK/$label.plain"
+    grep -E '^\s*\[(Warning|Error|Fatal Error)\]' "$WORK/$label.plain" | sed 's/^\s*//' | sort -u > "$WORK/$label.problems" || true
+}
+
+say "map-server --run-once without the mod (baseline)"
+map_server baseline
+base_status=$MS_STATUS
+echo "exit $base_status; warnings and errors the stock server gives by itself:"
+sed 's/^/    /' "$WORK/baseline.problems"
+grep -q "Server is 'ready'" "$WORK/baseline.plain" || { tail -50 "$WORK/baseline.plain"; echo "::error::The stock map-server did not start; nothing to compare the mod with."; exit 1; }
+
 # One map-server run with the mod applied under the given settings.
 run() {
-    local label=$1 settings=$2
+    local label=$1 settings=$2 status
     say "map-server --run-once, $NAME with $label"
     rm -rf "$WORK/app" "$WORK/state"
     mkdir -p "$WORK/app/db-import" "$WORK/state/mods"
@@ -74,8 +99,12 @@ run() {
     echo "$NAME" > "$WORK/state/mods/enabled.txt"   # on even if "default": "off"
     if [ "$ERA" = PRE ]; then touch "$WORK/state/prerenewal"; fi
     echo "$settings" > "$WORK/state/mod-settings.json"
-    (cd "$APP/stack" && CI_WORK="$WORK" CI_APP_VERSION="$APP_VERSION" \
-        cargo test -q -- --ignored ci_mod::assemble_mod --nocapture)
+    # (Called as `run ... || failed=1`, where set -e is off: check each step.)
+    if ! (cd "$APP/stack" && CI_WORK="$WORK" CI_APP_VERSION="$APP_VERSION" \
+            cargo test -q -- --ignored ci_mod::assemble_mod --nocapture); then
+        echo "::error::The app's mods::assemble did not apply $NAME ($ERA, $label): see above."
+        return 1
+    fi
 
     # As the app mounts them: the assembled tree replaces db/import, and the
     # scripts go to npc/mods.
@@ -92,25 +121,38 @@ run() {
         if [ -n "$file" ]; then echo "$line" >> "conf/import/$file"; fi
     done < "$WORK/conf_lines.txt"
 
-    local log=$WORK/map-server-$label.log
-    set +e
-    ./map-server --run-once 2>&1 | tee "$log"
-    local status=${PIPESTATUS[0]}
-    set -e
-    # Name the mod's own lines, so they're findable in a long log.
-    if grep -E '\[(Warning|Error|Debug)\]' "$log" | sed 's/\x1b\[[0-9;]*[A-Za-z]//g' | grep -E "npc/mods/|db/import/" ; then
-        echo "::error::map-server ($ERA, $label) reported problems in $NAME's files (above)."
+    map_server "$label"
+    status=$MS_STATUS
+    # What the server said about the mod's own files, problem or not.
+    echo "--- lines naming the mod's files (npc/mods/, db/import/):"
+    grep -E "npc/mods/|db/import/" "$WORK/$label.plain" | grep -vE "^\s*\[Status\]: (Loading|Done reading)" | sed 's/^/    /' || true
+    grep -E "Loading '[0-9]+' entries in 'db/import/|Done reading '[0-9]+' entries in 'db/import/" "$WORK/$label.plain" | sed 's/^/    /' || true
+
+    local new
+    new=$(comm -13 "$WORK/baseline.problems" "$WORK/$label.problems")
+    if [ -n "$new" ]; then
+        echo "--- map-server log around each new problem:"
+        while IFS= read -r line; do
+            grep -n -F -A3 -- "$line" "$WORK/$label.plain" | head -8
+            echo "::error::map-server ($ERA, $label): $line"
+        done <<< "$new"
     fi
-    if [ "$status" -ne 0 ]; then
-        echo "::error::map-server --run-once ($ERA, $label) exited with $status: in buildbot mode any warning or error fails. See the log above."
+    if ! grep -q "Server is 'ready'" "$WORK/$label.plain"; then
+        tail -60 "$WORK/$label.plain"
+        echo "::error::map-server ($ERA, $label) stopped before it was ready (exit $status). The end of its log is above."
         return 1
     fi
+    if [ "$status" -ne 0 ] && [ "$status" -ne "$base_status" ]; then
+        echo "::error::map-server ($ERA, $label) exited with $status; without the mod it exits with $base_status."
+        return 1
+    fi
+    if [ -n "$new" ]; then return 1; fi
+    echo "No warnings or errors beyond the stock server's."
 }
 
-defaults='{}'
 all_on=$(jq -c --arg n "$NAME" '{($n): ([.settings[]? | select((.type // "boolean") == "boolean") | {(.key): true}] | add // {})}' "$MOD/mod.json")
 failed=0
-run defaults "$defaults" || failed=1
+run defaults '{}' || failed=1
 if [ "$all_on" != "{\"$NAME\":{}}" ]; then
     run all-switches-on "$all_on" || failed=1
 fi
