@@ -1,0 +1,166 @@
+# Checks the mod on every pull request and every push to main, before anything
+# is released: the dry run that comes before a GitHub Release.
+#
+# - mod.json: valid JSON with name, version and requires, at most 40 settings,
+#   setting keys and when/<key>/ folders as docs/MODDING.md asks, and then the
+#   app's own manifest reader (the one it runs on a downloaded update).
+# - Every .yml parses with rapidyaml, the YAML parser rAthena uses.
+# - CHANGELOG.md, if there is one, has a "## <version>" section.
+# - The release zip, built the way release.yml builds it, has the layout
+#   docs/MOD_REGISTRY.md asks for and the app accepts what is inside it.
+# - The zip's server side (npc/, db/, custom maps) loads on the rAthena the app
+#   ships, with map-server --run-once in buildbot mode: any warning fails.
+#
+# The rules are Flux159/ragnarokoffline.app's, read from its latest release.
+# The scripts are in .github/scripts/ and are the same in every LilArt420 mod
+# repository.
+
+name: Validate mod
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # The folder that holds mod.json.
+  MOD_DIR: halloween-town
+  APP_REPO: Flux159/ragnarokoffline.app
+
+jobs:
+  mod:
+    name: mod.json, YAML, CHANGELOG, release zip
+    runs-on: ubuntu-latest
+    outputs:
+      app_tag: ${{ steps.app.outputs.tag }}
+      eras: ${{ steps.manifest.outputs.eras }}
+      server: ${{ steps.manifest.outputs.server }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install rapidyaml
+        run: pip install --quiet rapidyaml
+
+      - name: Check mod.json
+        id: manifest
+        run: python3 .github/scripts/validate_mod.py manifest "$MOD_DIR"
+
+      - name: Parse every .yml with rapidyaml
+        run: python3 .github/scripts/validate_mod.py yaml .
+
+      - name: Check CHANGELOG.md has a section for this version
+        env:
+          VERSION: ${{ steps.manifest.outputs.version }}
+        run: |
+          changelog=$(ls "$MOD_DIR/CHANGELOG.md" CHANGELOG.md 2>/dev/null | head -1 || true)
+          if [ -z "$changelog" ]; then
+            echo "No CHANGELOG.md: nothing to check. (The app shows its \"## <version>\" sections as update notes.)"
+            exit 0
+          fi
+          python3 .github/scripts/validate_mod.py changelog "$changelog" "$VERSION"
+
+      - name: Find the app's latest release
+        id: app
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(gh release view --repo "$APP_REPO" --json tagName -q .tagName)
+          echo "Checking against $APP_REPO $tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the app
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.APP_REPO }}
+          ref: ${{ steps.app.outputs.tag }}
+          path: .app
+
+      - name: The app's manifest reader accepts mod.json
+        env:
+          CI_MOD_DIR: ${{ github.workspace }}/${{ env.MOD_DIR }}
+        run: |
+          cat .github/scripts/app_mods_ci.rs >> .app/stack/src/mods.rs
+          cd .app/stack
+          cargo test -q -- --ignored ci_mod::check --nocapture
+
+      # Releases so far were zipped by hand as halloween-town-v<version>.zip,
+      # with the halloween-town/ folder at the top: built the same way here.
+      - name: Build the release zip
+        env:
+          NAME: ${{ steps.manifest.outputs.name }}
+          VERSION: ${{ steps.manifest.outputs.version }}
+        run: |
+          zip="$NAME-v$VERSION.zip"
+          zip -q -r "$zip" halloween-town -x '*.DS_Store' '*__MACOSX*'
+          unzip -l "$zip"
+          echo "ZIP=$zip" >> "$GITHUB_ENV"
+
+      - name: Check the release zip
+        env:
+          NAME: ${{ steps.manifest.outputs.name }}
+        run: |
+          pattern=$(jq -r '.source.asset // empty' ".app/registry/mods/$NAME/mod.json" 2>/dev/null || true)
+          [ -n "$pattern" ] && echo "Registry asset pattern: $pattern" || echo "$NAME has no source entry in the registry; checking the layout only."
+          python3 .github/scripts/validate_mod.py zip "$ZIP" "$NAME" $pattern
+          rm -rf .zip-check && mkdir .zip-check && unzip -q "$ZIP" -d .zip-check
+          manifest=$(cd .zip-check && find . -maxdepth 2 -name mod.json | head -1)
+          echo "CI_MOD_DIR=$PWD/.zip-check/$(dirname "$manifest")" >> "$GITHUB_ENV"
+
+      - name: The app's manifest reader accepts the zip's mod.json
+        run: |
+          cd .app/stack
+          cargo test -q -- --ignored ci_mod::check --nocapture
+
+      - name: Keep the zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-zip
+          path: ${{ env.ZIP }}
+          if-no-files-found: error
+
+  rathena:
+    name: rAthena map-server --run-once (${{ matrix.era }})
+    needs: mod
+    if: needs.mod.outputs.server == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        era: ${{ fromJSON(needs.mod.outputs.eras) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out the app
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.APP_REPO }}
+          ref: ${{ needs.mod.outputs.app_tag }}
+          path: .app
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-zip
+          path: .zip
+
+      - name: Install build packages
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q zlib1g-dev libpcre3-dev
+
+      - name: Load the mod from the release zip
+        run: |
+          unzip -q .zip/*.zip -d .zip/x
+          dir=$(dirname "$(cd .zip/x && find . -maxdepth 2 -name mod.json | head -1)")
+          bash .github/scripts/rathena_check.sh .app ".zip/x/$dir" "${{ matrix.era }}"
