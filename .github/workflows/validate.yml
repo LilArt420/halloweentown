@@ -134,7 +134,9 @@ jobs:
     name: rAthena map-server --run-once (${{ matrix.era }})
     needs: mod
     if: needs.mod.outputs.server == 'true'
-    runs-on: ubuntu-latest
+    # Pinned: Flux159/rathena's CI packages (libpcre3-dev, MySQL 8.0 with
+    # mysql_native_password) are Ubuntu 24.04's.
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
