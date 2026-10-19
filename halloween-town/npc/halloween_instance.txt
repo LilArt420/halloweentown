@@ -13,6 +13,8 @@
 //   every member on the map gets the Halloween Coins and the rewards.
 // - 90 minutes; 8 hour cooldown per character, starting on entry
 // - Every instance monster gives 1 Halloween Coin, every MVP 15
+// - Safe zone: while monsters roam, none may stay within 10 cells of the sky
+//   portal, so players coming back after dying aren't killed on arrival
 // - The Halloween Exchanger (niflheim 180,191) trades coins for prizes
 //
 // Key spots on hw_town (400x400, Niflheim's fields):
@@ -758,6 +760,21 @@ L_CasperToOwner:
 	hideoffnpc "Casper#HW";
 	return;
 
+// Moves every monster within 10 cells of the sky portal (261,158) to a random
+// walkable spot elsewhere in town
+L_SafeZone:
+	.@n = getareaunits(BL_MOB, "hw_town", 251, 148, 271, 168, .@mob);
+	for (.@i = 0; .@i < .@n; .@i++) {
+		for (.@try = 0; .@try < 20; .@try++) {
+			.@x = rand(90, 344);
+			.@y = rand(46, 358);
+			if (.@x >= 241 && .@x <= 281 && .@y >= 138 && .@y <= 178) continue;	// well away from the portal
+			if (checkcell("hw_town", .@x, .@y, cell_chkpass)) break;
+		}
+		if (.@try < 20) unitwarp .@mob[.@i], "hw_town", .@x, .@y;
+	}
+	return;
+
 // Blocks (false) or opens (true) the ring of cells under the pumpkins:
 // every cell exactly 3 cells (square distance) from the portal, 261,158
 L_Barrier:
@@ -782,6 +799,13 @@ OnTimer1000:
 		donpcevent "HW_Engine::OnCleanup";
 		end;
 	}
+	// Safe zone: while monsters roam the town (the hordes, and the road to the
+	// old hill), none may stay by the sky portal, where players arrive and come
+	// back after dying. They are moved somewhere else in town, not killed, so
+	// nothing is counted. Off for the final fight, which happens at the portal.
+	if ($@HW_Stage == 1 || $@HW_Stage == 5 || $@HW_Stage == 8 || $@HW_Stage == 9)
+		callsub L_SafeZone;
+
 	.@time$ = (.@rem / 60) + ":" + ((.@rem % 60) < 10 ? "0" : "") + (.@rem % 60);
 	switch ($@HW_Stage) {
 	case 0:  .@info$ = "Talk to Casper"; break;
@@ -858,7 +882,7 @@ L_Cfg:
 	// Eclipse
 	case 7: setarray .id[0], 20420, 3474, 3041;  .goal = 250; .spawn = 300; break;	// Corrupted Wanderer, Immortal Cursed Knight, Freezing Morocc Reincarnation
 	case 8: setarray .id[0], 3448, 3039, 20616;  .goal = 400; .spawn = 450; break;	// Renovated Amdarais, Blazing Morocc Reincarnation, Bone Ferus
-	case 9: setarray .id[0], 20920, 3091, 22209; .goal = 666; .spawn = 700; break;	// Lavaeter, Brinaranea, Polluted Earth Spirit
+	case 9: setarray .id[0], 20920, 3091, 20939; .goal = 666; .spawn = 700; break;	// Lavaeter, Brinaranea, Lude Gal
 	}
 	return;
 
