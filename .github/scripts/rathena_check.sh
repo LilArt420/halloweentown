@@ -77,7 +77,12 @@ map_server() {
     MS_STATUS=0
     ./map-server --run-once > "$WORK/$label.log" 2>&1 || MS_STATUS=$?
     sed 's/\x1b\[[0-9;]*[A-Za-z]//g; s/\r//g' "$WORK/$label.log" > "$WORK/$label.plain"
-    grep -E '^\s*\[(Warning|Error|Fatal Error)\]' "$WORK/$label.plain" | sed 's/^\s*//' | sort -u > "$WORK/$label.problems" || true
+    # A script error is "[Error]: " and the details on the next lines: join
+    # the first two of them on, so the line says what and where.
+    awk '/^[[:space:]]*\[(Warning|Error|Fatal Error)\]/ {
+             sub(/^[[:space:]]+/, ""); line = $0
+             if (line ~ /\]:[[:space:]]*$/) { for (i = 0; i < 2 && (getline more) > 0; i++) { sub(/^[[:space:]]+/, "", more); line = line " " more } }
+             print line }' "$WORK/$label.plain" | sort -u > "$WORK/$label.problems"
 }
 
 say "map-server --run-once without the mod (baseline)"
@@ -133,7 +138,8 @@ run() {
     if [ -n "$new" ]; then
         echo "--- map-server log around each new problem:"
         while IFS= read -r line; do
-            grep -n -F -A3 -- "$line" "$WORK/$label.plain" | head -8
+            key=$(grep -o 'script error on [^ ]* line [0-9]*' <<< "$line" || echo "$line")
+            grep -n -F -A8 -- "$key" "$WORK/$label.plain" | head -12
             echo "::error::map-server ($ERA, $label): $line"
         done <<< "$new"
     fi
