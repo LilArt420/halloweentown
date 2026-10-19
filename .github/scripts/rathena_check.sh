@@ -76,7 +76,8 @@ map_server() {
     local label=$1
     MS_STATUS=0
     ./map-server --run-once > "$WORK/$label.log" 2>&1 || MS_STATUS=$?
-    sed 's/\x1b\[[0-9;]*[A-Za-z]//g; s/\r//g' "$WORK/$label.log" > "$WORK/$label.plain"
+    # Without colours, and without the bell rAthena rings after "[Error]:".
+    sed 's/\x1b\[[0-9;]*[A-Za-z]//g' "$WORK/$label.log" | tr -d '\000-\010\013-\037' > "$WORK/$label.plain"
     # A script error is "[Error]: " and the details on the next lines: join
     # the first two of them on, so the line says what and where.
     awk '/^[[:space:]]*\[(Warning|Error|Fatal Error)\]/ {
