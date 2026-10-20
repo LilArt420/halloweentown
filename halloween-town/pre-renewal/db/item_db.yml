@@ -1,0 +1,20 @@
+# halloween-town -- item overrides, pre-renewal
+# Replaces db/item_db.yml on pre-renewal servers (mod.json "prerenewalFolder"),
+# so it repeats that file's entries and adds what pre-renewal lacks.
+# 12990 Pet_Egg_Scroll7 is renamed for the Halloween event; it still works
+# the same way (System/itemInfo-halloween-town.lua renames it in the client).
+# 6658 Halloween_Coin, the coin the hordes drop and the Halloween Exchanger
+# takes, is only in renewal's item_db: defined here as renewal defines it.
+
+Header:
+  Type: ITEM_DB
+  Version: 3
+
+Body:
+  - Id: 12990
+    AegisName: Pet_Egg_Scroll7
+    Name: Halloween Spooky Pack
+  - Id: 6658
+    AegisName: Halloween_Coin
+    Name: Halloween Coin
+    Type: Etc

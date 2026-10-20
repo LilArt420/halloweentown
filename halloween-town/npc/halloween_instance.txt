@@ -12,7 +12,11 @@
 //   only they talk to the NPCs inside, but every member's kills count, and
 //   every member on the map gets the Halloween Coins and the rewards.
 // - 90 minutes; 8 hour cooldown per character, starting on entry
-// - Every instance monster gives 1 Halloween Coin, every MVP 15
+// - Every instance monster gives 1 Halloween Coin, every MVP 15; Blair's
+//   final form also gives Halloween Tickets (333 / 456 / 666), which the
+//   Halloween Exchanger trades for Cash Points (3 tickets = 1 CP)
+// - Safe zone: while monsters roam, none may stay within 10 cells of the sky
+//   portal, so players coming back after dying aren't killed on arrival
 // - The Halloween Exchanger (niflheim 180,191) trades coins for prizes
 //
 // Key spots on hw_town (400x400, Niflheim's fields):
@@ -718,6 +722,14 @@ OnMvp2Kill:
 OnFinalKill:
 	if (!$@HW_Active || $@HW_Stage != 12) end;
 	callfunc "HW_Coins", 15;
+	// Halloween Tickets for everyone in the run on the map (Blue / Blood / Eclipse),
+	// traded for Cash Points at the Halloween Exchanger
+	setarray .@tickets[1], 333, 456, 666;
+	if (getitemname(7941) != "null") {
+		.@n = callfunc("HW_Members");
+		for (.@i = 0; .@i < .@n; .@i++)
+			getitem 7941, .@tickets[$@HW_Tier], $@HW_MA[.@i];
+	}
 	killmonster "hw_town", "All";
 	$@HW_Stage = 13;
 	movenpc "Blair#HW", 261, 158;
@@ -758,6 +770,21 @@ L_CasperToOwner:
 	hideoffnpc "Casper#HW";
 	return;
 
+// Moves every monster within 10 cells of the sky portal (261,158) to a random
+// walkable spot elsewhere in town
+L_SafeZone:
+	.@n = getareaunits(BL_MOB, "hw_town", 251, 148, 271, 168, .@mob);
+	for (.@i = 0; .@i < .@n; .@i++) {
+		for (.@try = 0; .@try < 20; .@try++) {
+			.@x = rand(90, 344);
+			.@y = rand(46, 358);
+			if (.@x >= 241 && .@x <= 281 && .@y >= 138 && .@y <= 178) continue;	// well away from the portal
+			if (checkcell("hw_town", .@x, .@y, cell_chkpass)) break;
+		}
+		if (.@try < 20) unitwarp .@mob[.@i], "hw_town", .@x, .@y;
+	}
+	return;
+
 // Blocks (false) or opens (true) the ring of cells under the pumpkins:
 // every cell exactly 3 cells (square distance) from the portal, 261,158
 L_Barrier:
@@ -782,6 +809,13 @@ OnTimer1000:
 		donpcevent "HW_Engine::OnCleanup";
 		end;
 	}
+	// Safe zone: while monsters roam the town (the hordes, and the road to the
+	// old hill), none may stay by the sky portal, where players arrive and come
+	// back after dying. They are moved somewhere else in town, not killed, so
+	// nothing is counted. Off for the final fight, which happens at the portal.
+	if ($@HW_Stage == 1 || $@HW_Stage == 5 || $@HW_Stage == 8 || $@HW_Stage == 9)
+		callsub L_SafeZone;
+
 	.@time$ = (.@rem / 60) + ":" + ((.@rem % 60) < 10 ? "0" : "") + (.@rem % 60);
 	switch ($@HW_Stage) {
 	case 0:  .@info$ = "Talk to Casper"; break;
@@ -858,7 +892,7 @@ L_Cfg:
 	// Eclipse
 	case 7: setarray .id[0], 20420, 3474, 3041;  .goal = 250; .spawn = 300; break;	// Corrupted Wanderer, Immortal Cursed Knight, Freezing Morocc Reincarnation
 	case 8: setarray .id[0], 3448, 3039, 20616;  .goal = 400; .spawn = 450; break;	// Renovated Amdarais, Blazing Morocc Reincarnation, Bone Ferus
-	case 9: setarray .id[0], 20920, 3091, 22209; .goal = 666; .spawn = 700; break;	// Lavaeter, Brinaranea, Polluted Earth Spirit
+	case 9: setarray .id[0], 20920, 3091, 20939; .goal = 666; .spawn = 700; break;	// Lavaeter, Brinaranea, Lude Gal
 	}
 	return;
 
@@ -880,16 +914,51 @@ niflheim,180,191,4	script	Halloween Exchanger	1130,{
 	mes "Trick or treat! Got any ^FF8C00Halloween Coins^000000? Blair's ghosts drop them all over Halloween Town.";
 	mes "My prices are in coins, not zeny. You have ^0000FF" + countitem(6658) + "^000000 coins.";
 	next;
-	if (select("Show me your treats:Never mind") == 2) { callfunc "HW_Portrait", 0; close; }
+	switch (select("Show me your treats:Trade Halloween Tickets for Cash Points:Never mind")) {
+	case 1:
+		callfunc "HW_Portrait", 0;
+		close2;
+		callshop "HW_CoinShop", 1;
+		end;
+	case 2:
+		// 3 Halloween Tickets (7941, from Blair's final form) = 1 Cash Point
+		.@have = countitem(7941);
+		.@max = .@have / 3;
+		mes "[Halloween Exchanger]";
+		mes "Ooh, ^FF8C00Halloween Tickets^000000! I'll give you ^0000FF1 Cash Point^000000 for every ^0000FF3 tickets^000000.";
+		mes "You have ^0000FF" + .@have + "^000000 tickets, enough for ^0000FF" + .@max + "^000000 Cash Points.";
+		if (.@max < 1) {
+			mes "Come back with at least 3! Blair drops them when she falls.";
+			callfunc "HW_Portrait", 0;
+			close;
+		}
+		next;
+		mes "[Halloween Exchanger]";
+		mes "How many Cash Points do you want? (1-" + .@max + ")";
+		next;
+		input .@cp, 1, .@max;
+		if (.@cp < 1 || .@cp > .@max || countitem(7941) < .@cp * 3) {
+			mes "[Halloween Exchanger]";
+			mes "Hehe, nice try. Count your tickets again!";
+			callfunc "HW_Portrait", 0;
+			close;
+		}
+		delitem 7941, .@cp * 3;
+		#CASHPOINTS += .@cp;
+		mes "[Halloween Exchanger]";
+		mes "Deal! ^0000FF" + (.@cp * 3) + "^000000 tickets for ^0000FF" + .@cp + "^000000 Cash Points. You have ^0000FF" + #CASHPOINTS + "^000000 Cash Points now. Happy Halloween!";
+		callfunc "HW_Portrait", 0;
+		close;
+	}
 	callfunc "HW_Portrait", 0;
-	close2;
-	callshop "HW_CoinShop", 1;
-	end;
+	close;
 
 OnInit:
 	//                 prize    stand-in  coins
 	setarray .@prize[0], 12990,     0,    50,	// Halloween Spooky Pack (Pet_Egg_Scroll7)
 	                     22669,     0,   100,	// HALLOWEEN_G_BOX
+	                     17317,     0,    50,	// October Spooky Crate (Sweet_Midgard_Scroll)
+	                     17307,     0,    50,	// October Spooky Box (Midgard_Scroll)
 	                     19910,     0,  1500,	// C_Halloween_Hat
 	                    420597, 20172,  1500,	// C_Halloween_Pumpkin -> Costume Pumpkin Hat
 	                     19903,     0,  1500,	// C_Witchs_Hat

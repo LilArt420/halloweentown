@@ -24,6 +24,7 @@ Higher levels can pick a lower moon too!
 ## 🏚️ Welcome to Halloween Town (or what's left of it)
 A haunted, night-time Niflheim in ruins 🌙
 - You land on a moonlit hill, locked in by a ring of jack-o'-lanterns 🎃 Talk to Casper to set them loose
+- The sky portal is a safe zone 🛡️ while the dead roam, no monster can stay near it, so you can come back after dying without getting swarmed
 - Pumpkins, coffins, candles, skull piles, lanterns and scarecrows all over town 🕸️
 - Bats flapping across the night sky 🦇
 - Its own spooky soundtrack 🎵
@@ -49,7 +50,7 @@ A haunted, night-time Niflheim in ruins 🌙
 | MVP 1 | Baphomet | Nightmare Baphomet | Chaos Baphomet |
 | Horde 2 | Bloody Knight, Abysmal Knight, Dark Illusion (150 each) | Mutant Plaga, Necromancer Ringleader, Immortal Cursed Zombie (250 each) | Renovated Amdarais, Blazing Morocc, Bone Ferus (400 each) |
 | MVP 2 | Samurai Specter | Ifrit | The One |
-| Horde 3 | Chimera, Ghostring, Hydrolancer (200 each) | Ancient Gigantes, 2nd Commander of Destruction, Contaminated Raydric (400 each) | Lavaeter, Brinaranea, Polluted Earth Spirit (666 each) |
+| Horde 3 | Chimera, Ghostring, Hydrolancer (200 each) | Ancient Gigantes, 2nd Commander of Destruction, Contaminated Raydric (400 each) | Lavaeter, Brinaranea, Lude Gal (666 each) |
 | Final MVP | Evil Snake Lord | Reaper Yanku | Death Witch |
 
 ## 👥 Bring Your Party!
@@ -67,15 +68,19 @@ A haunted, night-time Niflheim in ruins 🌙
 | 📦 Halloween Box | 1 | 3 | 5 |
 | 💰 Zeny | 1,500,000 | 3,000,000 | 5,000,000 |
 | ✨ Base / Job EXP | 50M / 30M | 2B / 1.2B | 30B / 18B |
+| 🎟️ Halloween Tickets (from Blair's final form) | 333 | 456 | 666 |
 
 ## 🎃 The Halloween Exchanger
 Jakk (Niflheim 180, 191) trades your Halloween Coins in a proper shop window 🛒
 - 🥚 Halloween Spooky Pack: 50 coins
 - 📦 Halloween Box: 100 coins
+- 📜 October Spooky Crate and October Spooky Box: 50 coins each
 - 🎩 Costume Halloween Hat, Witch's Hat, Broom of Witch, Halloween Cat Short, Halloween Poring Bag, Sakura Witch Hat and Jakk: 1,500 coins each
 - 🃏 Sealed Card Album II: 150,000 coins
 
 On Pre-renewal, any prize the server doesn't have is swapped for a Halloween stand-in automatically 🔄
+
+🎟️ **Halloween Tickets for Cash Points!** Bring Jakk the tickets Blair drops and he'll trade them at **3 tickets = 1 Cash Point** 💎
 
 ## ⏳ The Rules
 - 90 minutes to stop Blair before the portal closes ⌛
