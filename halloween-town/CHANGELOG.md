@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.1
+- Halloween Town is now open source under the GNU General Public License v3.0 (LICENSE, in the mod folder). The portraits and the minimap are not covered.
+- The mod's README is the full guide (the story, the moons, the rewards) instead of the old 1.1.0 notes.
+- From this release on, the zip is built by GitHub from the repository. Nothing in the game changes.
+
 ## 1.2.0
 - Halloween Exchanger: new prizes, the October Spooky Crate (17317) and the October Spooky Box (17307), 50 Halloween Coins each.
 - Halloween Tickets (7941): Blair's final form gives every member of the run 333 (Blue Moon), 456 (Blood Moon) or 666 (Eclipse). The Halloween Exchanger trades them for Cash Points, 3 tickets for 1 CP.

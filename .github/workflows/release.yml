@@ -1,0 +1,111 @@
+name: Build and Release Mod Zip
+
+# Runs when a release is published, from the GitHub website or the command line,
+# and attaches the mod as halloween-town-v<version>.zip -- the name Ragnarok
+# Offline's mod registry looks for (halloween-town-*.zip).
+#
+# The release's tag is the version: publish a release tagged v1.0.2 and
+#   - the zip's mod.json says "version": "1.0.2", and
+#   - halloween-town/mod.json on main is raised to 1.0.2 and committed, unless it already
+#     says 1.0.2 (or something newer). Bumping it yourself first is fine too.
+#
+# On GitHub: Releases -> Draft a new release -> Choose a tag -> type v1.0.2 ->
+# "Create new tag: v1.0.2 on publish" -> add a title and notes -> Publish release.
+# The zip appears on the release a minute or so later.
+#
+# From the command line, the same thing: gh release create v1.0.2 --generate-notes
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+env:
+  MOD_JSON: halloween-town/mod.json
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # The tag is the version: v1.0.2 -> 1.0.2.
+      - name: Read the version from the tag
+        id: version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version="${TAG#v}"
+          if ! [[ "$version" =~ ^[0-9]+(\.[0-9]+)*([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Release tag '$TAG' is not a version. Delete this release and its tag, and publish one tagged like v1.0.2."
+            exit 1
+          fi
+          name=$(jq -r .name "$MOD_JSON")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "zip=$name-v$version.zip" >> "$GITHUB_OUTPUT"
+
+      # The zip always carries the tag's version, whatever the commit says.
+      - name: Put the version in the zip's mod.json
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          current=$(jq -r '.version // ""' "$MOD_JSON")
+          if [ "$current" = "$VERSION" ]; then
+            echo "mod.json already says $VERSION."
+          else
+            jq --arg v "$VERSION" '.version = $v' "$MOD_JSON" > mod.json.tmp && mv mod.json.tmp "$MOD_JSON"
+            echo "mod.json: $current -> $VERSION (for the zip)."
+          fi
+
+      # Only the mod folder, so the zip has exactly one top-level folder with
+      # mod.json inside it. The app refuses a zip with anything else at the top.
+      # The zip's one top-level folder is halloween-town/, with the licence in it.
+      - name: Create Zip Archive
+        run: |
+          cp LICENSE halloween-town/
+          zip -r "${{ steps.version.outputs.zip }}" halloween-town -x '*.DS_Store' '*__MACOSX*'
+          unzip -l "${{ steps.version.outputs.zip }}"
+
+      - name: Release Zip to GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.version.outputs.zip }}
+          tag_name: ${{ github.event.release.tag_name }}
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Keep main's mod.json in step, so the next edit starts from the released
+      # version. Never fails the release: it's already published by now.
+      - name: Record the version on main
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git fetch --quiet origin "$BRANCH"
+          # --force: the zip step edited mod.json in this checkout; start from
+          # main as it really is, or that edit reads as "already bumped".
+          git checkout --quiet --force -B "$BRANCH" "origin/$BRANCH"
+          current=$(jq -r '.version // ""' "$MOD_JSON")
+          if [ "$current" = "$VERSION" ]; then
+            echo "$BRANCH already says $VERSION. Nothing to commit."
+            exit 0
+          fi
+          newest=$(printf '%s\n%s\n' "$current" "$VERSION" | sort -V | tail -1)
+          if [ "$newest" != "$VERSION" ]; then
+            echo "$BRANCH says $current, newer than $VERSION. Leaving it."
+            exit 0
+          fi
+          jq --arg v "$VERSION" '.version = $v' "$MOD_JSON" > mod.json.tmp && mv mod.json.tmp "$MOD_JSON"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --quiet -m "mod.json: version $VERSION (released as v$VERSION)" -- "$MOD_JSON"
+          if git push --quiet origin "HEAD:$BRANCH"; then
+            echo "$BRANCH: mod.json $current -> $VERSION."
+          else
+            echo "::warning::Couldn't push the version bump to $BRANCH (it may have moved). The release is fine; set \"version\": \"$VERSION\" in $MOD_JSON by hand."
+          fi
