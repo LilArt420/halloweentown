@@ -95,14 +95,13 @@ jobs:
           cd .app/stack
           cargo test -q -- --ignored ci_mod::check --nocapture
 
-      # Releases so far were zipped by hand as halloween-town-v<version>.zip,
-      # with the halloween-town/ folder at the top: built the same way here.
-      - name: Build the release zip
+      - name: Build the release zip as release.yml does
         env:
           NAME: ${{ steps.manifest.outputs.name }}
           VERSION: ${{ steps.manifest.outputs.version }}
         run: |
           zip="$NAME-v$VERSION.zip"
+          cp LICENSE halloween-town/
           zip -q -r "$zip" halloween-town -x '*.DS_Store' '*__MACOSX*'
           unzip -l "$zip"
           echo "ZIP=$zip" >> "$GITHUB_ENV"

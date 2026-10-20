@@ -1,5 +1,5 @@
-# Halloween Town
-Halloween Town - Custom Seasonal Instance
+# 🎃 Halloween Town
+A custom seasonal instance for Ragnarok Offline, solo or with your party 👻
 
 It's 11:59pm. The portal to Halloween Town closes at midnight. And a little ghost named Casper just found you 👻
 
@@ -89,3 +89,19 @@ On Pre-renewal, any prize the server doesn't have is swapped for a Halloween sta
 
 That's it! Grab your broom, pick your moon, and don't let Blair get through that portal 🧹🌙
 Happy Halloween 💜🎃
+
+## 💾 Installing
+In Ragnarok Offline: **Settings → Mods → Find Mods → halloween-town → Install**. Works in both eras.
+When a new release is out, the Mods tab shows **Update available** 🔔
+
+You can also download `halloween-town-v<version>.zip` from the [Releases](../../releases) page and install it with **Install from a folder…**
+
+## 🚀 Releases
+- ✅ Every pull request runs [validate.yml](.github/workflows/validate.yml): `mod.json`, every `.yml` with rapidyaml, the CHANGELOG, the release zip's layout, and the scripts on an rAthena map-server `--run-once`, in both eras.
+- 🏷️ Publishing a GitHub Release tagged `v<version>` builds `halloween-town-v<version>.zip` ([release.yml](.github/workflows/release.yml)) and attaches it. What changed is in [CHANGELOG.md](halloween-town/CHANGELOG.md).
+
+## 📜 License
+The scripts, client code and documentation in this repository are licensed under the [GNU General Public License v3.0](LICENSE), the same licence as rAthena.
+
+- 🎨 The portraits and the minimap (`halloween-town/data/texture/`) are not covered by the GPL: ask before reusing them.
+- 🏰 Ragnarok Online itself (its maps, including the Niflheim that Halloween Town is built from, sprites, music, monsters, items and names) belongs to Gravity Co., Ltd. and is not covered either.
