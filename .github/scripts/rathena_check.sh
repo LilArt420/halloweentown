@@ -51,6 +51,9 @@ say "Build: packetver $PACKETVER, pre-renewal $PRERE, buildbot"
 cd "$RA"
 ./configure --enable-packetver="$PACKETVER" --enable-prere="$PRERE" --enable-buildbot=yes >/dev/null
 make import >/dev/null
+# libconfig on its own first: in a parallel build its obj/ folder can lose
+# the race ("can't create obj/grammar.o: No such file or directory").
+make libconfig >/dev/null
 make -j"$(nproc)" map >/dev/null
 cp -R db/import "$WORK/db-import-clean"
 cp conf/import/map_conf.txt "$WORK/map_conf-clean.txt"
