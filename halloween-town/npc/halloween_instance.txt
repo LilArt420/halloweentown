@@ -18,6 +18,16 @@
 // - Safe zone: while monsters roam, none may stay within 10 cells of the sky
 //   portal, so players coming back after dying aren't killed on arrival
 // - The Halloween Exchanger (niflheim 180,191) trades coins for prizes
+// - 1.3.0, trick or treat: Jack-o'-Champions (2 of each horde monster,
+//   crowned, large, 6x the HP; each counts for 10 and pays everyone 10 coins),
+//   the Lost Children (6 little ghosts, 2 in each horde: Casper hears them and
+//   points the way; each one found sweetens the party, and all six make the
+//   hoard bigger), 8 candy bowls on the doorsteps (one knock each: a treat...
+//   or a trick), the Lanterns of Light (Blair's true form is shielded by her
+//   shadows until the 4 jack-o'-lanterns around the portal are lit, which
+//   takes standing still 2 seconds; 60 seconds later the shadows snuff them out again),
+//   and a grade for every night (time and falls: S, A, B, C), with the
+//   fastest one under each moon on Casper's board.
 //
 // Key spots on hw_town (400x400, Niflheim's fields):
 //   sky portal / arrival  261,158  (pumpkin ring around it)
@@ -54,6 +64,116 @@ function	script	HW_Portrait	{
 // Clicking it opens the navigation; the coordinates are never shown.
 function	script	HW_Navi	{
 	return "<NAVI>" + getarg(0) + "<INFO>hw_town," + getarg(1) + "," + getarg(2) + ",0,000,0</INFO></NAVI>";
+}
+
+// 1 when the attached character belongs to the open run: its owner, or a
+// member of the owner's party who has joined it (talked to Casper)
+function	script	HW_InRun	{
+	if (getcharid(0) == $@HW_CID) return 1;
+	return ($@HW_PID && getcharid(1) == $@HW_PID && HW_Run == $@HW_RunID);
+}
+
+// mm:ss for <seconds>
+function	script	HW_Clock	{
+	.@t = getarg(0);
+	return (.@t / 60) + ":" + ((.@t % 60) < 10 ? "0" : "") + (.@t % 60);
+}
+
+// A Lost Child is found: any member of the run can send them home.
+//   callfunc "HW_Child", <1..6>;   (from the child's own NPC)
+function	script	HW_Child	{
+	.@c = getarg(0);
+	if (!$@HW_Active || !callfunc("HW_InRun") || !($@HW_KidOut & (1 << .@c))) return;
+	setarray .@line$[1],
+		"Is it morning yet? Mommy said to wait by the pumpkins until the bell rang... the bell rang a long time ago.",
+		"I was a vampire for Halloween! A real scary one! ...Then the shadows came, and now I'm a real ghost. I don't like it.",
+		"I hid all my candy so the big kids wouldn't take it. Now I can't find my candy OR my house.",
+		"Are you a hero? Casper says heroes always come back for the little ones. I've been counting... I counted to a million.",
+		"My big sister ran to Umbala. She said she'd come back for me. Is she coming?",
+		"I'm not scared. I'm NOT. ...Can you hold my hand anyway? Ghosts can hold hands, right?";
+	mes "[Lost Child]";
+	mes .@line$[.@c];
+	next;
+	callfunc "HW_Portrait", 1;
+	mes "[Casper]";
+	mes "Shh, it's okay. Follow the moonlight, little one: it goes all the way home. Your family is waiting on the other side.";
+	callfunc "HW_Portrait", 0;
+	close2;
+	if (!($@HW_KidOut & (1 << .@c))) return;	// someone else got there first
+	$@HW_KidOut = $@HW_KidOut & ~(1 << .@c);
+	$@HW_Kids++;
+	$@HW_Bless = 1;	// the loop sweetens the party
+	callfunc "HW_Coins", 10;
+	specialeffect EF_ANGEL, AREA, strnpcinfo(0);
+	hideonnpc strnpcinfo(0);
+	mapannounce "hw_town", "[Casper]: A little one is on the way home! Lost Children found: " + $@HW_Kids + "/6. Have some candy, everyone!", bc_map, "0xFF8C00";
+	return;
+}
+
+// A candy bowl on a doorstep: one knock, a treat... or a trick.
+//   callfunc "HW_Bowl", <0..7>;   (from the bowl's own NPC)
+function	script	HW_Bowl	{
+	.@b = getarg(0);
+	if (!$@HW_Active || !callfunc("HW_InRun") || !($@HW_BowlOut & (1 << .@b))) return;
+	$@HW_BowlOut = $@HW_BowlOut & ~(1 << .@b);
+	getmapxy(.@m$, .@x, .@y, BL_NPC, strnpcinfo(0));
+	hideonnpc strnpcinfo(0);
+	.@r = rand(100);
+	if (.@r < 35) {
+		// a treat: candy for the whole party, and coins for the knocker
+		$@HW_Bless = 1;
+		getitem 6658, 15;
+		dispbottom "[Halloween Town] TREAT! A fistful of candy and 15 Halloween Coins!", 0xFF8C00;
+	} else if (.@r < 55) {
+		// a big treat: coins for everyone, and the knocker is patched up
+		callfunc "HW_Coins", 40;
+		percentheal 100, 100;
+		mapannounce "hw_town", "[Casper]: " + strcharinfo(0) + " found a bowl of real treasure! 40 coins for everyone!", bc_map, "0xFF8C00";
+	} else if (.@r < 80) {
+		// a trick: something wakes up in the bowl
+		.@h = ($@HW_Horde ? $@HW_Horde : 1);
+		callsub L_Champion, .@h, rand(3), .@x, .@y;
+		dispbottom "[Halloween Town] TRICK! Something was hiding in the candy...", 0xFF4444;
+	} else {
+		// a trick: a pumpkin bomb
+		specialeffect2 EF_SUI_EXPLOSION;
+		percentheal -40, 0;
+		sc_start SC_STUN, 2000, 1;
+		dispbottom "[Halloween Town] TRICK! The pumpkin explodes in your face!", 0xFF4444;
+	}
+	return;
+
+L_Champion:
+	callfunc "HW_Champion", getarg(0), getarg(1), getarg(2), getarg(3);
+	return;
+}
+
+// Spawns a Jack-o'-Champion of horde <1|2|3>, slot <0..2>, on <x>,<y>:
+// crowned, large, 6x the HP. During a horde it counts for 10 of its kind.
+function	script	HW_Champion	{
+	switch (($@HW_Tier - 1) * 3 + getarg(0)) {
+	case 1: setarray .@id[0], 1163, 1297, 1208; break;
+	case 2: setarray .@id[0], 1268, 1219, 1302; break;
+	case 3: setarray .@id[0], 1283, 1120, 1720; break;
+	case 4: setarray .@id[0], 3200, 2993, 2959; break;
+	case 5: setarray .@id[0], 20360, 2736, 3480; break;
+	case 6: setarray .@id[0], 3193, 2474, 20367; break;
+	case 7: setarray .@id[0], 20420, 3474, 3041; break;
+	case 8: setarray .@id[0], 3448, 3039, 20616; break;
+	case 9: setarray .@id[0], 20920, 3091, 20939; break;
+	default: return;
+	}
+	.@mob = .@id[getarg(1)];
+	.@x = getarg(2);
+	.@y = getarg(3);
+	areamonster "hw_town", .@x - 2, .@y - 2, .@x + 2, .@y + 2, "Jack-o'-Champion " + getmonsterinfo(.@mob, MOB_NAME), .@mob, 1, "HW_Engine::OnChampKill" + getarg(1), Size_Large;
+	.@g = $@mobid[0];
+	if (!.@g || !unitexists(.@g)) return;
+	.@hp = getmonsterinfo(.@mob, MOB_MAXHP) * 6;
+	setunitdata .@g, UMOB_MAXHP, .@hp;
+	setunitdata .@g, UMOB_HP, .@hp;
+	hateffect HAT_EF_SUBJECT_AURA_GOLD, true, .@g;
+	return;
 }
 
 // The run's members who are on hw_town right now (the solo player, or every
@@ -177,6 +297,15 @@ niflheim,185,190,4	script	Casper#HWgate	10029,{
 		close;
 	}
 
+	// the fastest night under each moon, and yours
+	if ($HW_Best[1] || $HW_Best[2] || $HW_Best[3]) {
+		mes "[Casper]";
+		mes "^0000FFThe fastest Halloween nights^000000:";
+		for (.@m = 1; .@m <= 3; .@m++)
+			if ($HW_Best[.@m]) mes .@moon$[.@m] + ": ^0000FF" + callfunc("HW_Clock", $HW_Best[.@m]) + "^000000 (grade " + $HW_BestGrade$[.@m] + "), by ^0000FF" + $HW_BestBy$[.@m] + "^000000";
+		if (HW_Best) mes "Your own best: ^0000FF" + callfunc("HW_Clock", HW_Best) + "^000000.";
+		next;
+	}
 	mes "[Casper]";
 	mes "There was a witch called Blair. The people of Halloween Town tied her to a stake and burned her alive.";
 	next;
@@ -296,7 +425,16 @@ hw_town,255,154,6	script	Casper#HW	10029,{
 		mes "Blair is down in the " + callfunc("HW_Navi", "cemetery", 202, 240) + ", pulling the lost souls out of their graves and binding them to the shadows.";
 		next;
 		mes "[Casper]";
-		mes "Cut them down before she raises enough of them to cross over into Midgard. The pumpkins are the only thing keeping them off this hill... I'll let them go. Ready? Here they come!";
+		mes "Cut them down before she raises enough of them to cross over into Midgard.";
+		next;
+		mes "[Casper]";
+		mes "Oh, and... some of the town's children never found their way home. If you hear a little one crying, ^0000FFbring them to the light^000000. The ones crowned in pumpkin fire are her ^FF8C00Jack-o'-Champions^000000, worth ten of the others.";
+		next;
+		mes "[Casper]";
+		mes "And the candy bowls on the doorsteps? Knock if you dare. Some are treats... ^FF0000some are tricks^000000.";
+		next;
+		mes "[Casper]";
+		mes "The pumpkins are the only thing keeping them off this hill... I'll let them go. Ready? Here they come!";
 		callfunc "HW_Portrait", 0;
 		close2;
 
@@ -454,7 +592,18 @@ hw_town,202,240,4	script	Blair#HW	3887,{
 		$@HW_Stage = 12;
 		.@id = callfunc("HW_Boss", 3);
 		monster "hw_town", 261, 158, "--ja--", .@id, 1, "HW_Engine::OnFinalKill";
+		$@HW_FinalGID = $@mobid[0];
+		// her shadows shield her until the 4 Lanterns of Light are lit
+		if ($@HW_FinalGID && unitexists($@HW_FinalGID)) setunitdata $@HW_FinalGID, UMOB_DMGIMMUNE, 1;
+		$@HW_LitMask = 0;
+		$@HW_Lit = 0;
+		$@HW_ShieldBack = 0;
+		for (.@i = 0; .@i < 4; .@i++) {
+			setnpcdisplay "Jack-o'-Lantern#HWL" + .@i, "Jack-o'-Lantern", 10174;
+			hideoffnpc "Jack-o'-Lantern#HWL" + .@i;
+		}
 		mapannounce "hw_town", "[Blair]: Behold my true form!", bc_map, "0xFF0000";
+		mapannounce "hw_town", "[Casper]: Her shadows are shielding her! Light the 4 jack-o'-lanterns around the portal: stand still beside one until it catches!", bc_map, "0xFF8C00";
 		end;
 	}
 
@@ -504,6 +653,24 @@ hw_town,1,1,4	script	Halloween Box#HW	10421,{
 	mes "[Blair's Hoard]";
 	mes "Candy wrappers, cursed coins, and the dusty treasures of a hundred Halloweens. Enough for everyone who flew in tonight.";
 	next;
+	// the night's grade: time and falls (S: no falls and under 35 minutes,
+	// A: 2 falls at most and under 50, B: under 70, C: the rest)
+	setarray .@moon$[1], "Blue Moon", "Blood Moon", "Eclipse";
+	.@t = gettimetick(2) - $@HW_RunID;
+	if ($@HW_Deaths == 0 && .@t <= 2100) $@HW_Grade$ = "S";
+	else if ($@HW_Deaths <= 2 && .@t <= 3000) $@HW_Grade$ = "A";
+	else if (.@t <= 4200) $@HW_Grade$ = "B";
+	else $@HW_Grade$ = "C";
+	mes "[Blair's Hoard]";
+	mes "Night: ^0000FF" + callfunc("HW_Clock", .@t) + "^000000 | Falls: ^0000FF" + $@HW_Deaths + "^000000 | Lost Children found: ^0000FF" + $@HW_Kids + "/6^000000";
+	mes "Grade: ^FF0000" + $@HW_Grade$ + "^000000";
+	if (!$HW_Best[$@HW_Tier] || .@t < $HW_Best[$@HW_Tier]) {
+		$HW_Best[$@HW_Tier] = .@t;
+		$HW_BestGrade$[$@HW_Tier] = $@HW_Grade$;
+		$HW_BestBy$[$@HW_Tier] = $@HW_Name$ + ($@HW_PID ? "'s party" : "");
+		announce "[Halloween Town] " + $HW_BestBy$[$@HW_Tier] + " stopped Blair under the " + .@moon$[$@HW_Tier] + " in " + callfunc("HW_Clock", .@t) + ", a new record!", bc_all, "0xFF8C00";
+	}
+	next;
 	// the owner's share here (they are attached); the rest of the party's in
 	// HW_Engine::OnRewardParty, which waits a moment and skips the owner
 	callfunc "HW_GiveRewards";
@@ -520,6 +687,11 @@ hw_town,1,1,4	script	Halloween Box#HW	10421,{
 	mes "The children of Midgard will knock on doors tonight and never know how close the shadows came. That's the best kind of ending, isn't it?";
 	next;
 	mes "[Casper]";
+	if ($@HW_Kids >= 6) {
+		mes "And the little ones... all six of them, home. My mother stood in a doorway for me once. Tonight you stood in it for every one of them.";
+		next;
+		mes "[Casper]";
+	}
 	mes "Thank you, hero. Whenever evil rises again, call for me. I'll fight it at your side.";
 	next;
 	mes "[Casper]";
@@ -549,6 +721,22 @@ function	script	HW_GiveRewards	{
 	if (getitemname(22669) != "null") getitem 22669, .@box[.@t];
 	Zeny += .@zeny[.@t];
 	getexp .@bexp[.@t], .@jexp[.@t];
+	// the grade: S a Halloween Box and 100 coins, A 50 coins, B 20 coins
+	.@gc = 0;
+	if ($@HW_Grade$ == "S") {
+		.@gc = 100;
+		if (getitemname(22669) != "null") getitem 22669, 1;
+	} else if ($@HW_Grade$ == "A") .@gc = 50;
+	else if ($@HW_Grade$ == "B") .@gc = 20;
+	// all six Lost Children home: a Halloween Box and 50 coins more
+	if ($@HW_Kids >= 6) {
+		.@gc += 50;
+		if (getitemname(22669) != "null") getitem 22669, 1;
+	}
+	if (.@gc && getitemname(6658) != "null") getitem 6658, .@gc;
+	// a personal best
+	.@time = gettimetick(2) - $@HW_RunID;
+	if (!HW_Best || .@time < HW_Best) HW_Best = .@time;
 	return;
 }
 
@@ -586,6 +774,15 @@ OnBlair2:
 	callfunc "HW_Portrait", 0;
 	close;
 
+// A Lost Child is crying somewhere in town
+OnChild:
+	if (strcharinfo(3) != "hw_town" || !$@HW_KidNow || !($@HW_KidOut & (1 << $@HW_KidNow))) end;
+	callfunc "HW_Portrait", 1;
+	mes "[Casper]";
+	mes "Wait... do you hear that? A little one is crying " + callfunc("HW_Navi", "over there", $@HW_KidX, $@HW_KidY) + ". Please, find them before the shadows do!";
+	callfunc "HW_Portrait", 0;
+	close;
+
 // Final MVP down
 OnSoul:
 	if (strcharinfo(3) != "hw_town") end;
@@ -615,7 +812,42 @@ OnSetup:
 	for (.@i = 0; .@i < 8; .@i++)
 		hideoffnpc "Pumpkin#HWB" + .@i;
 	callsub L_Barrier, false;
+	callsub L_HideExtras;
+	$@HW_Deaths = 0;
+	$@HW_Grade$ = "";
+	$@HW_Kids = 0;
+	$@HW_KidOut = 0;
+	$@HW_KidSeen = 0;
+	$@HW_KidNow = 0;
+	$@HW_KidPoint = 0;
+	$@HW_Bless = 0;
+	$@HW_FinalGID = 0;
+	$@HW_LitMask = 0;
+	$@HW_Lit = 0;
+	$@HW_ShieldBack = 0;
+	// 8 candy bowls on the town's doorsteps, well away from the portal
+	$@HW_BowlOut = 0;
+	for (.@b = 0; .@b < 8; .@b++) {
+		for (.@try = 0; .@try < 50; .@try++) {
+			getfreecell("hw_town", .@x, .@y, 217, 202, 127, 156);
+			if (distance(.@x, .@y, 261, 158) >= 25) break;
+		}
+		if (.@try >= 50) continue;
+		movenpc "Candy Bowl#HWT" + .@b, .@x, .@y;
+		hideoffnpc "Candy Bowl#HWT" + .@b;
+		$@HW_BowlOut = $@HW_BowlOut | (1 << .@b);
+	}
 	end;
+
+// The children, the bowls and the lanterns, hidden
+L_HideExtras:
+	for (.@c = 1; .@c <= 6; .@c++) hideonnpc "Lost Child#HWC" + .@c;
+	for (.@b = 0; .@b < 8; .@b++) hideonnpc "Candy Bowl#HWT" + .@b;
+	for (.@l = 0; .@l < 4; .@l++) {
+		setnpcdisplay "Jack-o'-Lantern#HWL" + .@l, "Jack-o'-Lantern", 10174;
+		hideonnpc "Jack-o'-Lantern#HWL" + .@l;
+	}
+	return;
 
 // Casper lets the pumpkins go
 OnRelease:
@@ -632,8 +864,38 @@ OnStartHorde:
 	$@HW_Goal = .goal;
 	for (.@i = 0; .@i < 3; .@i++)
 		areamonster "hw_town", 90, 46, 344, 358, "--ja--", .id[.@i], .spawn, "HW_Engine::OnHKill" + .@i;
+	// the Jack-o'-Champions: 2 of each kind, somewhere in town, away from the portal
+	for (.@i = 0; .@i < 3; .@i++) {
+		for (.@c = 0; .@c < 2; .@c++) {
+			for (.@try = 0; .@try < 50; .@try++) {
+				getfreecell("hw_town", .@x, .@y, 217, 202, 127, 156);
+				if (distance(.@x, .@y, 261, 158) >= 25) break;
+			}
+			callfunc "HW_Champion", $@HW_Horde, .@i, .@x, .@y;
+		}
+	}
 	mapannounce "hw_town", "[Casper]: Horde " + $@HW_Horde + "! Slay " + .goal + " each of " + getmonsterinfo(.id[0], MOB_NAME) + ", " + getmonsterinfo(.id[1], MOB_NAME) + " and " + getmonsterinfo(.id[2], MOB_NAME) + "!", bc_map, "0xFF8C00";
+	mapannounce "hw_town", "[Casper]: Six Jack-o'-Champions lead them, crowned in pumpkin fire. Each one is worth ten!", bc_map, "0xFF8C00";
 	end;
+
+// A Jack-o'-Champion of slot 0/1/2: 10 of its kind during a horde, and 10
+// coins for everyone (a trick's champion between hordes pays the coins only)
+OnChampKill0:
+	callsub L_Champ, 0;
+	end;
+OnChampKill1:
+	callsub L_Champ, 1;
+	end;
+OnChampKill2:
+	callsub L_Champ, 2;
+	end;
+
+L_Champ:
+	if (!$@HW_Active) return;
+	callfunc "HW_Coins", 10;
+	mapannounce "hw_town", "[Casper]: A Jack-o'-Champion is down! 10 coins for everyone!", bc_map, "0xFF8C00";
+	if ($@HW_Stage == 1 || $@HW_Stage == 5 || $@HW_Stage == 9) callsub L_Kill, getarg(0), 10;
+	return;
 
 OnHKill0:
 	callsub L_Kill, 0;
@@ -649,8 +911,10 @@ OnHKill2:
 L_Kill:
 	if (!$@HW_Active || ($@HW_Stage != 1 && $@HW_Stage != 5 && $@HW_Stage != 9)) return;
 	.@t = getarg(0);
-	callfunc "HW_Coins", 1;
-	if ($@HW_K[.@t] < $@HW_Goal) $@HW_K[.@t]++;
+	.@amt = getarg(1, 1);	// a Jack-o'-Champion counts for 10
+	if (.@amt == 1) callfunc "HW_Coins", 1;
+	$@HW_K[.@t] += .@amt;
+	if ($@HW_K[.@t] > $@HW_Goal) $@HW_K[.@t] = $@HW_Goal;
 	callsub L_Cfg, $@HW_Horde;
 	if (playerattached())
 		dispbottom "[Halloween Town] " + getmonsterinfo(.id[0], MOB_NAME) + ": " + $@HW_K[0] + "/" + $@HW_Goal + " | " + getmonsterinfo(.id[1], MOB_NAME) + ": " + $@HW_K[1] + "/" + $@HW_Goal + " | " + getmonsterinfo(.id[2], MOB_NAME) + ": " + $@HW_K[2] + "/" + $@HW_Goal;
@@ -718,6 +982,18 @@ OnMvp2Kill:
 	$@HW_Guide = 3;
 	end;
 
+// A Jack-o'-Lantern caught: the 4th burns Blair's shadows away for 60 seconds
+OnLanternLit:
+	if (!$@HW_Active || $@HW_Stage != 12 || $@HW_ShieldBack) end;
+	if ($@HW_Lit < 4) {
+		mapannounce "hw_town", "[Casper]: A lantern is burning! " + $@HW_Lit + "/4!", bc_map, "0xFF8C00";
+		end;
+	}
+	if ($@HW_FinalGID && unitexists($@HW_FinalGID)) setunitdata $@HW_FinalGID, UMOB_DMGIMMUNE, 0;
+	$@HW_ShieldBack = gettimetick(2) + 60;
+	mapannounce "hw_town", "[Casper]: The light burns her shadows away! Strike her now, before they come back!", bc_map, "0xFFFF00";
+	end;
+
 // Final MVP down: Blair's cleansed soul at the portal
 OnFinalKill:
 	if (!$@HW_Active || $@HW_Stage != 12) end;
@@ -731,6 +1007,9 @@ OnFinalKill:
 			getitem 7941, .@tickets[$@HW_Tier], $@HW_MA[.@i];
 	}
 	killmonster "hw_town", "All";
+	for (.@l = 0; .@l < 4; .@l++) hideonnpc "Jack-o'-Lantern#HWL" + .@l;
+	$@HW_FinalGID = 0;
+	$@HW_ShieldBack = 0;
 	$@HW_Stage = 13;
 	movenpc "Blair#HW", 261, 158;
 	hideoffnpc "Blair#HW";
@@ -816,6 +1095,48 @@ OnTimer1000:
 	if ($@HW_Stage == 1 || $@HW_Stage == 5 || $@HW_Stage == 8 || $@HW_Stage == 9)
 		callsub L_SafeZone;
 
+	// candy for the party (a child found, or a treat from a bowl)
+	if ($@HW_Bless) {
+		$@HW_Bless = 0;
+		.@n = callfunc("HW_Members");
+		copyarray .@aid[0], $@HW_MA[0], .@n;
+		for (.@i = 0; .@i < .@n; .@i++) {
+			if (!attachrid(.@aid[.@i])) continue;
+			if (Hp > 0) {
+				sc_start SC_BLESSING, 180000, 10;
+				sc_start SC_INCREASEAGI, 180000, 10;
+				specialeffect2 EF_BLESSING;
+			}
+			detachrid;
+		}
+	}
+
+	// the Lost Children: 2 in each horde (at 30% and 70%); one left alone 4
+	// minutes fades into the shadows
+	if ($@HW_Stage == 1 || $@HW_Stage == 5 || $@HW_Stage == 9) {
+		.@pct = ($@HW_K[0] + $@HW_K[1] + $@HW_K[2]) * 100 / ($@HW_Goal * 3);
+		.@c1 = $@HW_Horde * 2 - 1;
+		.@c2 = $@HW_Horde * 2;
+		if (.@pct >= 30 && !($@HW_KidSeen & (1 << .@c1))) callsub L_ChildAppear, .@c1;
+		if (.@pct >= 70 && !($@HW_KidSeen & (1 << .@c2))) callsub L_ChildAppear, .@c2;
+	}
+	for (.@c = 1; .@c <= 6; .@c++)
+		if (($@HW_KidOut & (1 << .@c)) && gettimetick(2) >= $@HW_KidT[.@c] + 240) {
+			$@HW_KidOut = $@HW_KidOut & ~(1 << .@c);
+			hideonnpc "Lost Child#HWC" + .@c;
+			mapannounce "hw_town", "[Casper]: No... the shadows took the little one.", bc_map, "0xFF4444";
+		}
+
+	// the final fight: 60 seconds after the 4th lantern, the shadows snuff them
+	if ($@HW_Stage == 12 && $@HW_ShieldBack && gettimetick(2) >= $@HW_ShieldBack) {
+		$@HW_ShieldBack = 0;
+		$@HW_LitMask = 0;
+		$@HW_Lit = 0;
+		if ($@HW_FinalGID && unitexists($@HW_FinalGID)) setunitdata $@HW_FinalGID, UMOB_DMGIMMUNE, 1;
+		for (.@l = 0; .@l < 4; .@l++) setnpcdisplay "Jack-o'-Lantern#HWL" + .@l, "Jack-o'-Lantern", 10174;
+		mapannounce "hw_town", "[Casper]: The shadows snuffed out the lanterns! Light them again!", bc_map, "0xFF4444";
+	}
+
 	.@time$ = (.@rem / 60) + ":" + ((.@rem % 60) < 10 ? "0" : "") + (.@rem % 60);
 	switch ($@HW_Stage) {
 	case 0:  .@info$ = "Talk to Casper"; break;
@@ -837,8 +1158,11 @@ OnTimer1000:
 	.@n = callfunc("HW_Members");
 	copyarray .@aid[0], $@HW_MA[0], .@n;
 	setarray .@guide$[1], "OnBlair1", "OnHouse", "OnBlair2", "OnSoul";
+	if ($@HW_Stage >= 1) .@info$ += " | Children " + $@HW_Kids + "/6";
+	if ($@HW_Stage == 12) .@info$ = ($@HW_ShieldBack ? "Strike Blair now! (" + ($@HW_ShieldBack - gettimetick(2)) + "s)" : "Light the lanterns " + $@HW_Lit + "/4");
 	for (.@i = 0; .@i < .@n; .@i++) {
 		if (!attachrid(.@aid[.@i])) continue;
+		if ($@HW_KidPoint) addtimer 500, "HW_Guide::OnChild";
 		showscript "[Halloween Town] " + .@time$ + " | " + .@info$;
 		if ($@HW_Guide && getcharid(0) == $@HW_CID) {
 			addtimer 100, "HW_Guide::" + .@guide$[$@HW_Guide];
@@ -848,8 +1172,30 @@ OnTimer1000:
 			dispbottom "[Halloween Town] " + (.@rem / 60) + " minute(s) left before the portal closes!";
 		detachrid;
 	}
+	$@HW_KidPoint = 0;
 	setnpctimer 0;
 	end;
+
+// A Lost Child appears somewhere in town, away from the portal; Casper hears
+// them (the loop hands his pointer to everyone)
+L_ChildAppear:
+	.@c = getarg(0);
+	$@HW_KidSeen = $@HW_KidSeen | (1 << .@c);
+	for (.@try = 0; .@try < 50; .@try++) {
+		getfreecell("hw_town", .@x, .@y, 217, 202, 127, 156);
+		if (distance(.@x, .@y, 261, 158) >= 25) break;
+	}
+	if (.@try >= 50) return;
+	$@HW_KidOut = $@HW_KidOut | (1 << .@c);
+	$@HW_KidT[.@c] = gettimetick(2);
+	movenpc "Lost Child#HWC" + .@c, .@x, .@y;
+	hideoffnpc "Lost Child#HWC" + .@c;
+	$@HW_KidNow = .@c;
+	$@HW_KidX = .@x;
+	$@HW_KidY = .@y;
+	$@HW_KidPoint = 1;
+	mapannounce "hw_town", "[Casper]: I hear a child crying somewhere in town! Find them!", bc_map, "0xFF8C00";
+	return;
 
 OnCleanup:
 	stopnpctimer;
@@ -862,6 +1208,7 @@ OnCleanup:
 	for (.@i = 0; .@i < 8; .@i++)
 		hideoffnpc "Pumpkin#HWB" + .@i;
 	callsub L_Barrier, false;
+	callsub L_HideExtras;
 	$@HW_Active = 0;
 	$@HW_CID = 0;
 	$@HW_AID = 0;
@@ -898,6 +1245,55 @@ L_Cfg:
 
 OnInit:
 	callsub L_Barrier, false;
+	end;
+}
+
+// --- The Lost Children: little ghosts who never found their way home ---
+// They show up during the hordes (HW_Engine::L_ChildAppear).
+hw_town,1,1,4	script	Lost Child#HWC1	950,{ callfunc "HW_Child", 1; end; OnInit: hideonnpc; end; }
+hw_town,1,1,4	script	Lost Child#HWC2	950,{ callfunc "HW_Child", 2; end; OnInit: hideonnpc; end; }
+hw_town,1,1,4	script	Lost Child#HWC3	950,{ callfunc "HW_Child", 3; end; OnInit: hideonnpc; end; }
+hw_town,1,1,4	script	Lost Child#HWC4	950,{ callfunc "HW_Child", 4; end; OnInit: hideonnpc; end; }
+hw_town,1,1,4	script	Lost Child#HWC5	950,{ callfunc "HW_Child", 5; end; OnInit: hideonnpc; end; }
+hw_town,1,1,4	script	Lost Child#HWC6	950,{ callfunc "HW_Child", 6; end; OnInit: hideonnpc; end; }
+
+// --- Candy bowls on the doorsteps (placed at random on every run) ---
+hw_town,1,1,4	script	Candy Bowl#HWT0	10174,{ callfunc "HW_Bowl", 0; end; OnInit: hideonnpc; end; }
+hw_town,1,1,4	script	Candy Bowl#HWT1	10174,{ callfunc "HW_Bowl", 1; end; OnInit: hideonnpc; end; }
+hw_town,1,1,4	script	Candy Bowl#HWT2	10174,{ callfunc "HW_Bowl", 2; end; OnInit: hideonnpc; end; }
+hw_town,1,1,4	script	Candy Bowl#HWT3	10174,{ callfunc "HW_Bowl", 3; end; OnInit: hideonnpc; end; }
+hw_town,1,1,4	script	Candy Bowl#HWT4	10174,{ callfunc "HW_Bowl", 4; end; OnInit: hideonnpc; end; }
+hw_town,1,1,4	script	Candy Bowl#HWT5	10174,{ callfunc "HW_Bowl", 5; end; OnInit: hideonnpc; end; }
+hw_town,1,1,4	script	Candy Bowl#HWT6	10174,{ callfunc "HW_Bowl", 6; end; OnInit: hideonnpc; end; }
+hw_town,1,1,4	script	Candy Bowl#HWT7	10174,{ callfunc "HW_Bowl", 7; end; OnInit: hideonnpc; end; }
+
+// --- The Lanterns of Light around the sky portal (the final fight) ---
+// Clicking one and standing still beside it for 2 seconds lights it (a jack-o'-
+// lantern becomes a bonfire); the 4th burns Blair's shadow shield away for 60s.
+hw_town,253,158,4	script	Jack-o'-Lantern#HWL0	10174,{
+	.@l = atoi(charat(strnpcinfo(2), 3));	// HWL<n>
+	if (!$@HW_Active || $@HW_Stage != 12 || !callfunc("HW_InRun") || $@HW_ShieldBack || ($@HW_LitMask & (1 << .@l))) end;
+	progressbar "ffcc00", 2;	// stand still: moving breaks it off
+	if (!$@HW_Active || $@HW_Stage != 12 || $@HW_ShieldBack || ($@HW_LitMask & (1 << .@l))) end;
+	$@HW_LitMask = $@HW_LitMask | (1 << .@l);
+	$@HW_Lit++;
+	setnpcdisplay strnpcinfo(0), "Lantern of Light", 10252;
+	specialeffect EF_FIREPILLARON, AREA, strnpcinfo(0);
+	donpcevent "HW_Engine::OnLanternLit";
+	end;
+OnInit:
+	hideonnpc;
+	end;
+}
+hw_town,269,158,4	duplicate(Jack-o'-Lantern#HWL0)	Jack-o'-Lantern#HWL1	10174
+hw_town,261,150,4	duplicate(Jack-o'-Lantern#HWL0)	Jack-o'-Lantern#HWL2	10174
+hw_town,261,166,4	duplicate(Jack-o'-Lantern#HWL0)	Jack-o'-Lantern#HWL3	10174
+
+// --- Every fall in the run counts against its grade ---
+-	script	HW_Falls	-1,{
+OnPCDieEvent:
+	if (!$@HW_Active || strcharinfo(3) != "hw_town" || !callfunc("HW_InRun")) end;
+	$@HW_Deaths++;
 	end;
 }
 
