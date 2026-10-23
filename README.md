@@ -34,7 +34,7 @@ A haunted, night-time Niflheim in ruins 🌙
 - 🎃 **Jack-o'-Champions**: every horde is led by 6 pumpkin-crowned champions (2 of each monster), bigger and 6x as hardy. Each one counts for **10 kills** and pays **everyone** 10 Halloween Coins
 - 👻 **The Lost Children**: six little ghosts never found their way home, 2 in each horde. Casper hears them crying and gives you a navigation link 🧭 Find them within 4 minutes, or the shadows take them. Each one found sweetens the party (Blessing and Increase Agility, Lv 10) and pays everyone 10 coins; **all six** bring something special to Blair's hoard 💜
 - 🍭 **Candy bowls**: 8 bowls sit on doorsteps around town, somewhere new every night. One knock each: a treat (candy for the party, coins, healing)... or a trick (a Jack-o'-Champion jumps out, or the pumpkin explodes in your face) 💥
-- 🕯️ **The Lanterns of Light**: Blair's true form is shielded by her shadows. Stand still beside the 4 jack-o'-lanterns around the portal until they catch fire, and the light burns her shield away for 30 seconds. Then the shadows snuff them out, and it's time to light them again 🔥
+- 🕯️ **The Lanterns of Light**: Blair's true form is shielded by her shadows. Click each of the 4 jack-o'-lanterns around the portal and stand still beside it for 2 seconds until it catches fire, and the light burns her shield away for 60 seconds. Then the shadows snuff them out, and it's time to light them again 🔥
 - 🏅 **Your night's grade**: time and falls make an **S** (no falls, under 35 minutes), **A** (2 falls at most, under 50), **B** (under 70) or **C**, and the better the grade, the bigger the hoard
 - 🏆 **The fastest nights**: Casper in Niflheim remembers the fastest night under each moon (and yours)
 

@@ -25,7 +25,7 @@
 //   hoard bigger), 8 candy bowls on the doorsteps (one knock each: a treat...
 //   or a trick), the Lanterns of Light (Blair's true form is shielded by her
 //   shadows until the 4 jack-o'-lanterns around the portal are lit, which
-//   takes standing still; 30 seconds later the shadows snuff them out again),
+//   takes standing still 2 seconds; 60 seconds later the shadows snuff them out again),
 //   and a grade for every night (time and falls: S, A, B, C), with the
 //   fastest one under each moon on Casper's board.
 //
@@ -982,7 +982,7 @@ OnMvp2Kill:
 	$@HW_Guide = 3;
 	end;
 
-// A Jack-o'-Lantern caught: the 4th burns Blair's shadows away for 30 seconds
+// A Jack-o'-Lantern caught: the 4th burns Blair's shadows away for 60 seconds
 OnLanternLit:
 	if (!$@HW_Active || $@HW_Stage != 12 || $@HW_ShieldBack) end;
 	if ($@HW_Lit < 4) {
@@ -990,7 +990,7 @@ OnLanternLit:
 		end;
 	}
 	if ($@HW_FinalGID && unitexists($@HW_FinalGID)) setunitdata $@HW_FinalGID, UMOB_DMGIMMUNE, 0;
-	$@HW_ShieldBack = gettimetick(2) + 30;
+	$@HW_ShieldBack = gettimetick(2) + 60;
 	mapannounce "hw_town", "[Casper]: The light burns her shadows away! Strike her now, before they come back!", bc_map, "0xFFFF00";
 	end;
 
@@ -1127,7 +1127,7 @@ OnTimer1000:
 			mapannounce "hw_town", "[Casper]: No... the shadows took the little one.", bc_map, "0xFF4444";
 		}
 
-	// the final fight: 30 seconds after the 4th lantern, the shadows snuff them
+	// the final fight: 60 seconds after the 4th lantern, the shadows snuff them
 	if ($@HW_Stage == 12 && $@HW_ShieldBack && gettimetick(2) >= $@HW_ShieldBack) {
 		$@HW_ShieldBack = 0;
 		$@HW_LitMask = 0;
@@ -1268,12 +1268,12 @@ hw_town,1,1,4	script	Candy Bowl#HWT6	10174,{ callfunc "HW_Bowl", 6; end; OnInit:
 hw_town,1,1,4	script	Candy Bowl#HWT7	10174,{ callfunc "HW_Bowl", 7; end; OnInit: hideonnpc; end; }
 
 // --- The Lanterns of Light around the sky portal (the final fight) ---
-// Standing still beside one for 4 seconds lights it (a jack-o'-lantern
-// becomes a bonfire); the 4th burns Blair's shadow shield away for 30s.
+// Clicking one and standing still beside it for 2 seconds lights it (a jack-o'-
+// lantern becomes a bonfire); the 4th burns Blair's shadow shield away for 60s.
 hw_town,253,158,4	script	Jack-o'-Lantern#HWL0	10174,{
 	.@l = atoi(charat(strnpcinfo(2), 3));	// HWL<n>
 	if (!$@HW_Active || $@HW_Stage != 12 || !callfunc("HW_InRun") || $@HW_ShieldBack || ($@HW_LitMask & (1 << .@l))) end;
-	progressbar "ffcc00", 4;	// stand still: moving breaks it off
+	progressbar "ffcc00", 2;	// stand still: moving breaks it off
 	if (!$@HW_Active || $@HW_Stage != 12 || $@HW_ShieldBack || ($@HW_LitMask & (1 << .@l))) end;
 	$@HW_LitMask = $@HW_LitMask | (1 << .@l);
 	$@HW_Lit++;

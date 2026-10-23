@@ -5,7 +5,7 @@ Trick or treat: new things to fight, find and light on every night.
 - Jack-o'-Champions: 2 pumpkin-crowned champions of each horde monster lead every horde (large, 6x the HP). Each counts for 10 kills and pays everyone on the map 10 Halloween Coins.
 - The Lost Children: 6 little ghosts, 2 in each horde (at 30% and 70%). Casper points everyone to each one with a navigation link; any member can send them home within 4 minutes. Each one found sweetens the party (Blessing and Increase Agility, Lv 10, 3 minutes) and pays everyone 10 coins; all six add a Halloween Box and 50 coins to everyone's hoard, and Casper has something to say.
 - Candy bowls: 8 bowls on doorsteps around town, placed anew every night. One knock each: a treat (candy for the party, 15 coins), a big treat (40 coins for everyone, a full heal), or a trick (a Jack-o'-Champion jumps out, or the pumpkin explodes: 40% HP and a short stun).
-- The Lanterns of Light: Blair's true form is immune while her shadows shield her. Standing still 4 seconds beside each of the 4 jack-o'-lanterns around the portal lights it; the 4th burns the shield away for 30 seconds, then the shadows snuff them out again.
+- The Lanterns of Light: Blair's true form is immune while her shadows shield her. Clicking each of the 4 jack-o'-lanterns around the portal and standing still 2 seconds lights it; the 4th burns the shield away for 60 seconds, then the shadows snuff them out again.
 - Every night gets a grade from its time and falls (S, A, B, C), shown at Blair's hoard, with a bonus for S (a Halloween Box and 100 coins), A (50 coins) and B (20 coins).
 - The fastest night under each moon (and your own) on Casper's board in Niflheim; a new record is announced to the whole server.
 
