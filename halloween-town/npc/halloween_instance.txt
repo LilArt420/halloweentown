@@ -1290,11 +1290,14 @@ hw_town,1,1,4	script	Candy Bowl#HWT7	10174,{ callfunc "HW_Bowl", 7; end; OnInit:
 // --- The Lanterns of Light around the sky portal (the final fight) ---
 // Clicking one and standing still beside it for 2 seconds lights it (a jack-o'-
 // lantern becomes a bonfire); the 4th burns Blair's shadow shield away for 60s.
-// The bar is the lantern's own (progressbar_npc), timed by the server: the
-// player's own bar waits for the client to answer when a hit or a freeze cancels
-// it, and the web client never does, which left every later click dead.
+// The bar is the lantern's own (progressbar_npc), timed by the server, so the
+// client's timing can't end it early.
+// Each lantern goes by its unique name: setnpcdisplay replaces the whole display
+// name ("Jack-o'-Lantern", "Lantern of Light"), so strnpcinfo(0) and (2) lose the
+// "#HWL<n>" that tells the four apart.
 hw_town,253,158,4	script	Jack-o'-Lantern#HWL0	10174,{
-	.@l = atoi(charat(strnpcinfo(2), 3));	// HWL<n>
+	.@me$ = strnpcinfo(3);
+	.@l = atoi(charat(.@me$, getstrlen(.@me$) - 1));	// HWL<n>
 	if (!$@HW_Active || $@HW_Stage != 12 || !callfunc("HW_InRun") || $@HW_ShieldBack || ($@HW_LitMask & (1 << .@l))) end;
 	if (gettimetick(2) < $@HW_LightT[.@l]) end;	// someone is lighting it right now
 	$@HW_LightT[.@l] = gettimetick(2) + 3;
@@ -1303,8 +1306,8 @@ hw_town,253,158,4	script	Jack-o'-Lantern#HWL0	10174,{
 	if (!$@HW_Active || $@HW_Stage != 12 || $@HW_ShieldBack || ($@HW_LitMask & (1 << .@l)) || Hp < 1) end;
 	$@HW_LitMask = $@HW_LitMask | (1 << .@l);
 	$@HW_Lit++;
-	setnpcdisplay strnpcinfo(0), "Lantern of Light", 10252;
-	specialeffect EF_FIREPILLARON, AREA, strnpcinfo(0);
+	setnpcdisplay .@me$, "Lantern of Light", 10252;
+	specialeffect EF_FIREPILLARON, AREA, .@me$;
 	donpcevent "HW_Engine::OnLanternLit";
 	end;
 OnInit:
