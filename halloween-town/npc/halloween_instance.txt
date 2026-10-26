@@ -204,6 +204,17 @@ function	script	HW_Members	{
 	return .@n;
 }
 
+// Puts the Halloween Coins the attached player carries in their coin bank;
+// returns how many
+function	script	HW_Deposit	{
+	.@n = countitem(6658);
+	if (.@n < 1) return 0;
+	delitem 6658, .@n;
+	#HW_COINBANK += .@n;
+	dispbottom "[Halloween Town] " + .@n + " Halloween Coins went into your coin bank (" + #HW_COINBANK + ").", 0xFF8C00;
+	return .@n;
+}
+
 // Gives <n> Halloween Coins to every member on hw_town, whoever made the kill
 function	script	HW_Coins	{
 	.@n = callfunc("HW_Members");
@@ -1163,6 +1174,13 @@ OnTimer1000:
 	for (.@i = 0; .@i < .@n; .@i++) {
 		if (!attachrid(.@aid[.@i])) continue;
 		if ($@HW_KidPoint) addtimer 500, "HW_Guide::OnChild";
+		// every Lost Child still out is an orange mark on the minimap
+		for (.@c = 1; .@c <= 6; .@c++) {
+			if ($@HW_KidOut & (1 << .@c))
+				viewpoint 1, $@HW_KidPX[.@c], $@HW_KidPY[.@c], 10 + .@c, 0xFF8C00;
+			else if ($@HW_KidSeen & (1 << .@c))
+				viewpoint 2, 1, 1, 10 + .@c, 0xFFFFFF;
+		}
 		showscript "[Halloween Town] " + .@time$ + " | " + .@info$;
 		if ($@HW_Guide && getcharid(0) == $@HW_CID) {
 			addtimer 100, "HW_Guide::" + .@guide$[$@HW_Guide];
@@ -1193,6 +1211,8 @@ L_ChildAppear:
 	$@HW_KidNow = .@c;
 	$@HW_KidX = .@x;
 	$@HW_KidY = .@y;
+	$@HW_KidPX[.@c] = .@x;
+	$@HW_KidPY[.@c] = .@y;
 	$@HW_KidPoint = 1;
 	mapannounce "hw_town", "[Casper]: I hear a child crying somewhere in town! Find them!", bc_map, "0xFF8C00";
 	return;
@@ -1270,11 +1290,17 @@ hw_town,1,1,4	script	Candy Bowl#HWT7	10174,{ callfunc "HW_Bowl", 7; end; OnInit:
 // --- The Lanterns of Light around the sky portal (the final fight) ---
 // Clicking one and standing still beside it for 2 seconds lights it (a jack-o'-
 // lantern becomes a bonfire); the 4th burns Blair's shadow shield away for 60s.
+// The bar is the lantern's own (progressbar_npc), timed by the server: the
+// player's own bar waits for the client to answer when a hit or a freeze cancels
+// it, and the web client never does, which left every later click dead.
 hw_town,253,158,4	script	Jack-o'-Lantern#HWL0	10174,{
 	.@l = atoi(charat(strnpcinfo(2), 3));	// HWL<n>
 	if (!$@HW_Active || $@HW_Stage != 12 || !callfunc("HW_InRun") || $@HW_ShieldBack || ($@HW_LitMask & (1 << .@l))) end;
-	progressbar "ffcc00", 2;	// stand still: moving breaks it off
-	if (!$@HW_Active || $@HW_Stage != 12 || $@HW_ShieldBack || ($@HW_LitMask & (1 << .@l))) end;
+	if (gettimetick(2) < $@HW_LightT[.@l]) end;	// someone is lighting it right now
+	$@HW_LightT[.@l] = gettimetick(2) + 3;
+	progressbar_npc "0xFFCC00", 2;	// holds the lighter still for 2 seconds
+	$@HW_LightT[.@l] = 0;
+	if (!$@HW_Active || $@HW_Stage != 12 || $@HW_ShieldBack || ($@HW_LitMask & (1 << .@l)) || Hp < 1) end;
 	$@HW_LitMask = $@HW_LitMask | (1 << .@l);
 	$@HW_Lit++;
 	setnpcdisplay strnpcinfo(0), "Lantern of Light", 10252;
@@ -1302,21 +1328,58 @@ OnPCDieEvent:
 // built when the server starts, from the items this server actually has:
 // a prize missing here (e.g. on Pre-renewal) is swapped for a Halloween
 // stand-in, or left out if that is missing too.
--	itemshop	HW_CoinShop	-1,6658,12990:50
+// Prices are paid from the account's coin bank (#HW_COINBANK): a stack of
+// coins stops at 30,000, and the dearest prize costs 150,000. Shopping puts
+// the coins you carry in the bank first; they can be taken out again.
+-	pointshop	HW_CoinShop	-1,#HW_COINBANK,12990:50
 
 niflheim,180,191,4	script	Halloween Exchanger	1130,{
 	callfunc "HW_Portrait", 3;
 	mes "[Halloween Exchanger]";
 	mes "Trick or treat! Got any ^FF8C00Halloween Coins^000000? Blair's ghosts drop them all over Halloween Town.";
-	mes "My prices are in coins, not zeny. You have ^0000FF" + countitem(6658) + "^000000 coins.";
+	mes "My prices are in coins, not zeny. You carry ^0000FF" + countitem(6658) + "^000000 coins, and your coin bank holds ^0000FF" + callfunc("F_InsertComma", #HW_COINBANK) + "^000000.";
 	next;
-	switch (select("Show me your treats:Trade Halloween Tickets for Cash Points:Never mind")) {
+	switch (select("Show me your treats:Put my coins in the bank:Take coins out of the bank:Trade Halloween Tickets for Cash Points:Never mind")) {
 	case 1:
 		callfunc "HW_Portrait", 0;
 		close2;
+		callfunc "HW_Deposit";
 		callshop "HW_CoinShop", 1;
 		end;
 	case 2:
+		.@n = callfunc("HW_Deposit");
+		mes "[Halloween Exchanger]";
+		if (.@n)
+			mes "^0000FF" + .@n + "^000000 coins in the bank! It holds ^0000FF" + callfunc("F_InsertComma", #HW_COINBANK) + "^000000 now. No stack too big for Jakk's bank.";
+		else
+			mes "Your pockets are empty! Blair's ghosts drop coins all over Halloween Town.";
+		callfunc "HW_Portrait", 0;
+		close;
+	case 3:
+		.@room = 30000 - countitem(6658);
+		.@max = (#HW_COINBANK < .@room) ? #HW_COINBANK : .@room;
+		mes "[Halloween Exchanger]";
+		if (.@max < 1) {
+			mes (#HW_COINBANK ? "Your pockets can't hold any more coins!" : "Your bank is empty!");
+			callfunc "HW_Portrait", 0;
+			close;
+		}
+		mes "How many coins do you want? (1-" + .@max + ")";
+		next;
+		input .@n, 1, .@max;
+		if (.@n < 1 || .@n > #HW_COINBANK || !checkweight(6658, .@n)) {
+			mes "[Halloween Exchanger]";
+			mes "You can't carry that many!";
+			callfunc "HW_Portrait", 0;
+			close;
+		}
+		#HW_COINBANK -= .@n;
+		getitem 6658, .@n;
+		mes "[Halloween Exchanger]";
+		mes "Here you go: ^0000FF" + .@n + "^000000 coins. The bank holds ^0000FF" + callfunc("F_InsertComma", #HW_COINBANK) + "^000000.";
+		callfunc "HW_Portrait", 0;
+		close;
+	case 4:
 		// 3 Halloween Tickets (7941, from Blair's final form) = 1 Cash Point
 		.@have = countitem(7941);
 		.@max = .@have / 3;
