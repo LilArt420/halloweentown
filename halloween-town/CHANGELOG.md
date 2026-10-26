@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.1
+Fixes from your feedback:
+- 🕯️ The Lanterns of Light no longer stop working after the first one. Getting hit or frozen while lighting one left the game waiting on a progress bar that never finished, so every later click did nothing. The lantern now shows its own 2-second bar and holds you still while it burns, and hits and freezes can't break it.
+- 👻 Every Lost Child still out is marked on your minimap (orange) until someone finds them, so you don't have to click a navigation link in the middle of a fight.
+- 🏦 Jakk keeps a coin bank for your account. A stack of Halloween Coins stops at 30,000, so the Sealed Card Album II (150,000) could never be bought. Now the coins you carry go into the bank when you shop, the shop spends from the bank, and you can take coins out again whenever you like.
+
 ## 1.3.0
 Trick or treat: new things to fight, find and light on every night.
 - Jack-o'-Champions: 2 pumpkin-crowned champions of each horde monster lead every horde (large, 6x the HP). Each counts for 10 kills and pays everyone on the map 10 Halloween Coins.
