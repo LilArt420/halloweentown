@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.2
+- 🎃 The Lanterns of Light really work now. When the final fight began, the lanterns lost the hidden tag that tells them apart, so the game took all four for the same lantern: the first one caught without its 1/4, the other three did nothing, and Blair's shield never fell. Each lantern now knows which one it is, turns into a bonfire, and counts toward the four.
+
 ## 1.3.1
 Fixes from your feedback:
 - 🕯️ The Lanterns of Light no longer stop working after the first one. Their 2-second bar could end a hair early on the client, and the server counted that as cancelled, so the lantern never caught. Each lantern now runs its own bar, timed by the server, and holds you still while it burns; hits and freezes can't interrupt it.
