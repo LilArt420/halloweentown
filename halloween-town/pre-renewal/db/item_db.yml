@@ -15,6 +15,7 @@ Body:
   - Id: 12990
     AegisName: Pet_Egg_Scroll7
     Name: Halloween Spooky Pack
+    Type: Usable    # rAthena has it as Delayconsume, which only an item skill uses up: opening it must eat it
     Script: |
       // Pre-renewal's 12990 has no script and no IG_Pet_Egg_Scroll7 group:
       // the same draw as Renewal's group, odds and amounts included
