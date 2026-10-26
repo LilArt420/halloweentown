@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.4
+- 🎁 Pre-renewal: opening a Halloween Spooky Pack now uses it up. In 1.3.3 it gave its prize but stayed in your bag.
+
 ## 1.3.3
 - 🎁 Pre-renewal: the Halloween Spooky Pack from Jakk's shop did nothing when opened (the Pre-renewal item has no contents). It now gives the same draw as on Renewal: Battle Manuals, Life Insurance, Enriched Oridecon, Kafra Cards, Megaphones, Old Purple Boxes, Immortal Stew, a Bloody Branch, or, rarely, a Succubus or Incubus Card or an Evolved Pipe or Pair of Red Ribbon.
 
