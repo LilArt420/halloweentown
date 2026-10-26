@@ -2,7 +2,7 @@
 
 ## 1.3.1
 Fixes from your feedback:
-- 🕯️ The Lanterns of Light no longer stop working after the first one. Getting hit or frozen while lighting one left the game waiting on a progress bar that never finished, so every later click did nothing. The lantern now shows its own 2-second bar and holds you still while it burns, and hits and freezes can't break it.
+- 🕯️ The Lanterns of Light no longer stop working after the first one. Their 2-second bar could end a hair early on the client, and the server counted that as cancelled, so the lantern never caught. Each lantern now runs its own bar, timed by the server, and holds you still while it burns; hits and freezes can't interrupt it.
 - 👻 Every Lost Child still out is marked on your minimap (orange) until someone finds them, so you don't have to click a navigation link in the middle of a fight.
 - 🏦 Jakk keeps a coin bank for your account. A stack of Halloween Coins stops at 30,000, so the Sealed Card Album II (150,000) could never be bought. Now the coins you carry go into the bank when you shop, the shop spends from the bank, and you can take coins out again whenever you like.
 
