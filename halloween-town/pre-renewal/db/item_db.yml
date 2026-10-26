@@ -1,8 +1,9 @@
 # halloween-town -- item overrides, pre-renewal
 # Replaces db/item_db.yml on pre-renewal servers (mod.json "prerenewalFolder"),
 # so it repeats that file's entries and adds what pre-renewal lacks.
-# 12990 Pet_Egg_Scroll7 is renamed for the Halloween event; it still works
-# the same way (System/itemInfo-halloween-town.lua renames it in the client).
+# 12990 Pet_Egg_Scroll7 is renamed for the Halloween event (System/itemInfo-
+# halloween-town.lua renames it in the client). Pre-renewal's 12990 has no
+# script, so it gets one here: Renewal's IG_Pet_Egg_Scroll7 draw.
 # 6658 Halloween_Coin, the coin the hordes drop and the Halloween Exchanger
 # takes, is only in renewal's item_db: defined here as renewal defines it.
 
@@ -14,6 +15,22 @@ Body:
   - Id: 12990
     AegisName: Pet_Egg_Scroll7
     Name: Halloween Spooky Pack
+    Script: |
+      // Pre-renewal's 12990 has no script and no IG_Pet_Egg_Scroll7 group:
+      // the same draw as Renewal's group, odds and amounts included
+      .@r = rand(998);
+      if (.@r < 80) getitem 12208, 2;        // Battle_Manual
+      else if (.@r < 110) getitem 12209, 2;  // Insurance
+      else if (.@r < 230) getitem 7620, 2;   // Enriched_Oridecon
+      else if (.@r < 420) getitem 12211, 10; // Kafra_Card
+      else if (.@r < 610) getitem 12221, 5;  // Megaphone_
+      else if (.@r < 660) getitem 617, 3;    // Old_Violet_Box
+      else if (.@r < 860) getitem 12085, 5;  // Vit_Dish10
+      else if (.@r < 980) getitem 12103, 1;  // Bloody_Dead_Branch
+      else if (.@r < 982) getitem 4218, 1;   // Succubus_Card
+      else if (.@r < 984) getitem 4269, 1;   // Incubus_Card
+      else if (.@r < 989) getitem 5220, 1;   // Smoking_Pipe_
+      else getitem 5221, 1;                  // Pair_Of_Red_Ribbon_
   - Id: 6658
     AegisName: Halloween_Coin
     Name: Halloween Coin

@@ -2,6 +2,7 @@
 
 ## 1.3.2
 - 🎃 The Lanterns of Light really work now. When the final fight began, the lanterns lost the hidden tag that tells them apart, so the game took all four for the same lantern: the first one caught without its 1/4, the other three did nothing, and Blair's shield never fell. Each lantern now knows which one it is, turns into a bonfire, and counts toward the four.
+- 🎁 Pre-renewal: the Halloween Spooky Pack from Jakk's shop did nothing when opened (the Pre-renewal item has no contents). It now gives the same draw as on Renewal: Battle Manuals, Life Insurance, Enriched Oridecon, Kafra Cards, Megaphones, Old Purple Boxes, Immortal Stew, a Bloody Branch, or, rarely, a Succubus or Incubus Card or an Evolved Pipe or Pair of Red Ribbon.
 
 ## 1.3.1
 Fixes from your feedback:
